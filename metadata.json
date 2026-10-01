@@ -1,0 +1,7 @@
+{
+  "name": "DHDC Portal",
+  "description": "Comprehensive College Portal for DHDC with 360° student dossiers, multi-period attendance, leave hours tracker, complaint routing, and CCE evaluation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
