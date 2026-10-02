@@ -1,13 +1,3 @@
-import { db } from '../firebase';
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  deleteDoc,
-  writeBatch,
-} from 'firebase/firestore';
 import type {
   User,
   Student,
@@ -71,16 +61,16 @@ export interface DatabaseState {
   showcaseCards?: ShowcaseCard[];
 }
 
-export function cleanForFirestore<T>(obj: T): T {
+export function cleanForDatabase<T>(obj: T): T {
   if (obj === null || obj === undefined) return obj;
   if (Array.isArray(obj)) {
-    return obj.map(cleanForFirestore) as any;
+    return obj.map(cleanForDatabase) as any;
   }
   if (typeof obj === 'object') {
     const cleaned: any = {};
     for (const [key, value] of Object.entries(obj)) {
       if (value !== undefined) {
-        cleaned[key] = cleanForFirestore(value);
+        cleaned[key] = cleanForDatabase(value);
       }
     }
     return cleaned;
@@ -383,419 +373,126 @@ class DataService {
     };
   }
 
-  public getFirebaseInfo() {
+  public getDatabaseInfo() {
     return {
       status: this.syncStatus,
       lastSyncTime: this.lastSyncTime,
       error: this.syncError,
-      databaseId: 'ai-studio-studentmarkmanag-a28635d8-791b-4e42-96e4-02e2dcc4ecd6',
-      projectId: 'astute-runway-96shk',
+      provider: 'Neon PostgreSQL (Prisma ORM)',
     };
   }
 
-  // Helper methods for robust batch Firestore operations
-  private async batchDeleteFirestoreDocs(collectionName: string, docIds: string[]): Promise<void> {
-    if (!docIds || docIds.length === 0) return;
-    for (let i = 0; i < docIds.length; i += 400) {
-      const chunk = docIds.slice(i, i + 400);
-      const batch = writeBatch(db);
-      chunk.forEach((id) => batch.delete(doc(db, collectionName, id)));
-      try {
-        await batch.commit();
-      } catch (e) {
-        console.warn(`Batch delete error in ${collectionName}:`, e);
-      }
+  public getFirebaseInfo() {
+    return this.getDatabaseInfo();
+  }
+
+  // Helper methods for PostgreSQL persistence via Next.js Backend API
+  public async persistToPostgres(action: 'upsert' | 'delete', entity: string, data: any): Promise<void> {
+    if (typeof window === 'undefined') return;
+    try {
+      await fetch('/api/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, entity, data: cleanForDatabase(data) }),
+      });
+    } catch (err) {
+      console.warn('PostgreSQL persistence error:', err);
     }
   }
 
-  private async batchDeleteFirestoreItems(items: { collection: string; id: string }[]): Promise<void> {
-    if (!items || items.length === 0) return;
-    for (let i = 0; i < items.length; i += 400) {
-      const chunk = items.slice(i, i + 400);
-      const batch = writeBatch(db);
-      chunk.forEach((item) => batch.delete(doc(db, item.collection, item.id)));
-      try {
-        await batch.commit();
-      } catch (e) {
-        console.warn('Batch delete items error:', e);
-      }
+  public async batchPersistToPostgres(items: { action?: 'upsert' | 'delete'; entity: string; data: any }[]): Promise<void> {
+    if (typeof window === 'undefined' || !items || items.length === 0) return;
+    try {
+      await fetch('/api/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batch: items.map((i) => ({ ...i, data: cleanForDatabase(i.data) })) }),
+      });
+    } catch (err) {
+      console.warn('PostgreSQL batch persistence error:', err);
     }
+  }
+
+  public async batchDeleteFirestoreDocs(collectionName: string, docIds: string[]): Promise<void> {
+    const items = docIds.map((id) => ({ action: 'delete' as const, entity: collectionName, data: { id } }));
+    await this.batchPersistToPostgres(items);
+  }
+
+  public async batchDeleteFirestoreItems(items: { collection: string; id: string }[]): Promise<void> {
+    const batchItems = items.map((i) => ({ action: 'delete' as const, entity: i.collection, data: { id: i.id } }));
+    await this.batchPersistToPostgres(batchItems);
   }
 
   public async batchSetFirestoreItems(items: { collection: string; id: string; data: any }[]): Promise<boolean> {
-    if (!items || items.length === 0) return true;
-    let success = true;
-    for (let i = 0; i < items.length; i += 300) {
-      const chunk = items.slice(i, i + 300);
-      const batch = writeBatch(db);
-      chunk.forEach((item) => {
-        const cleaned = cleanForFirestore(item.data);
-        batch.set(doc(db, item.collection, item.id), cleaned, { merge: true });
-      });
-      try {
-        await batch.commit();
-      } catch (e) {
-        console.warn('Batch set items in Firestore failed, retrying individually:', e);
-        success = false;
-        for (const item of chunk) {
-          try {
-            await setDoc(doc(db, item.collection, item.id), cleanForFirestore(item.data), { merge: true });
-          } catch (singleErr) {
-            console.error(`Individual set error in ${item.collection}/${item.id}:`, singleErr);
-          }
-        }
-      }
-    }
-    return success;
+    const batchItems = items.map((i) => ({ action: 'upsert' as const, entity: i.collection, data: i.data }));
+    await this.batchPersistToPostgres(batchItems);
+    return true;
   }
 
   public async syncWithFirestore(): Promise<boolean> {
-    return this.initFirestoreSync();
+    return this.syncWithPostgres();
   }
 
-  // Synchronize with Firestore in background or on user request
   public async initFirestoreSync(): Promise<boolean> {
-    if (this.syncPromise) {
-      return this.syncPromise;
-    }
-    this.syncPromise = this.doFirestoreSync().finally(() => {
+    return this.syncWithPostgres();
+  }
+
+  public async syncWithPostgres(): Promise<boolean> {
+    if (this.syncPromise) return this.syncPromise;
+    this.syncPromise = this.doPostgresSync().finally(() => {
       this.syncPromise = null;
     });
     return this.syncPromise;
   }
 
-  private async doFirestoreSync(): Promise<boolean> {
+  private async doPostgresSync(): Promise<boolean> {
     this.syncStatus = 'syncing';
     this.notify();
 
     try {
-      // Check if Firestore has users collection
-      const usersSnap = await getDocs(collection(db, 'users'));
-      if (usersSnap.empty) {
-        // Seed initial data to Firestore
-        const batch = writeBatch(db);
-        this.state.users.forEach((u) => {
-          batch.set(doc(db, 'users', u.id), u);
-        });
-        this.state.classes.forEach((c) => {
-          batch.set(doc(db, 'classes', c.id), c);
-        });
-        this.state.students.forEach((s) => {
-          batch.set(doc(db, 'students', s.id), s);
-        });
-        this.state.teachers.forEach((t) => {
-          batch.set(doc(db, 'teachers', t.id), t);
-        });
-        this.state.subjects.forEach((sub) => {
-          batch.set(doc(db, 'subjects', sub.id), sub);
-        });
-        this.state.evaluationLevels.forEach((el) => {
-          batch.set(doc(db, 'evaluation_levels', el.id), el);
-        });
-        this.state.marks.forEach((m) => {
-          batch.set(doc(db, 'marks', m.id), m);
-        });
-        await batch.commit();
-        console.log('Successfully seeded database to Firestore');
-      } else {
-        // Load data from Firestore to keep client state synchronized
-        const [
-          classesSnap,
-          studentsSnap,
-          teachersSnap,
-          subjectsSnap,
-          evalSnap,
-          marksSnap,
-          logsSnap,
-          achievementsSnap,
-          behaviorSnap,
-          slotsSnap,
-          leavesSnap,
-          attSnap,
-          clearanceSnap,
-          complaintsSnap,
-          showcaseCardsSnap,
-          ttPeriodsSnap,
-          ttSlotsSnap,
-          ttPeriodsConfigSnap,
-          ttSlotsConfigSnap,
-        ] = await Promise.all([
-          getDocs(collection(db, 'classes')),
-          getDocs(collection(db, 'students')),
-          getDocs(collection(db, 'teachers')),
-          getDocs(collection(db, 'subjects')),
-          getDocs(collection(db, 'evaluation_levels')),
-          getDocs(collection(db, 'marks')),
-          getDocs(collection(db, 'audit_logs')),
-          getDocs(collection(db, 'achievements')),
-          getDocs(collection(db, 'behavior_records')),
-          getDocs(collection(db, 'active_hour_slots')),
-          getDocs(collection(db, 'leave_applications')),
-          getDocs(collection(db, 'attendance_records')),
-          getDocs(collection(db, 'attendance_clearances')),
-          getDocs(collection(db, 'complaints_feedback')),
-          getDocs(collection(db, 'showcase_cards')),
-          getDocs(collection(db, 'timetable_periods')).catch(() => ({ empty: true, docs: [] } as any)),
-          getDocs(collection(db, 'timetable_slots')).catch(() => ({ empty: true, docs: [] } as any)),
-          getDoc(doc(db, 'system_config', 'timetable_periods')).catch(() => ({ exists: () => false, data: () => null } as any)),
-          getDoc(doc(db, 'system_config', 'timetable_slots')).catch(() => ({ exists: () => false, data: () => null } as any)),
-        ]);
-
-        if (!usersSnap.empty) {
-          const uniqueUsersMap = new Map<string, User>();
-          const duplicateUserDocIds: string[] = [];
-
-          usersSnap.docs.forEach((d) => {
-            const u = d.data() as User;
-            if (u.role === 'super_admin' && !u.password) {
-              u.password = 'admin123';
-            } else if (u.role === 'teacher' && !u.password) {
-              u.password = 'teacher123';
-            } else if (u.role === 'student' && !u.password) {
-              u.password = u.admissionNumber ? `${u.admissionNumber}${u.admissionNumber}${u.admissionNumber}` : 'student123';
-            }
-
-            const key = u.role === 'student' && u.admissionNumber
-              ? `student-adm-${u.admissionNumber.trim().toLowerCase()}`
-              : `user-${u.username?.trim().toLowerCase() || d.id}`;
-
-            if (!uniqueUsersMap.has(key)) {
-              uniqueUsersMap.set(key, { ...u, id: u.id || d.id });
-            } else {
-              duplicateUserDocIds.push(d.id);
-            }
-          });
-
-          this.state.users = Array.from(uniqueUsersMap.values());
-
-          if (duplicateUserDocIds.length > 0) {
-            this.batchDeleteFirestoreDocs('users', duplicateUserDocIds).catch(() => {});
-          }
-
-          // Guarantee super_admin user exists
-          const hasAdmin = this.state.users.some((u) => u.role === 'super_admin' || u.username === 'admin');
-          if (!hasAdmin) {
-            const defaultAdmin: User = {
-              id: 'user-admin',
-              username: 'admin',
-              role: 'super_admin',
-              name: 'Ashiq CP Hudawi',
-              email: 'admin@school.edu',
-              phone: '(555) 100-0001',
-              status: 'active',
-              password: 'admin123',
-              createdAt: new Date().toISOString(),
+      if (typeof window !== 'undefined') {
+        const res = await fetch('/api/data');
+        if (res.ok) {
+          const pgData = await res.json();
+          if (pgData && Array.isArray(pgData.users)) {
+            this.state = {
+              ...INITIAL_STATE,
+              ...pgData,
+              users: pgData.users || [],
+              classes: pgData.classes || [],
+              students: pgData.students || [],
+              teachers: pgData.teachers || [],
+              subjects: pgData.subjects || [],
+              evaluationLevels: pgData.evaluationLevels || [],
+              marks: pgData.marks || [],
+              attendanceRecords: pgData.attendanceRecords || [],
+              leaveApplications: pgData.leaveApplications || [],
+              attendanceClearances: pgData.attendanceClearances || [],
+              studentLeaveClearanceApplications: pgData.studentLeaveClearanceApplications || [],
+              complaintsFeedback: pgData.complaintsFeedback || [],
+              achievements: pgData.achievements || [],
+              behaviorRecords: pgData.behaviorRecords || [],
+              timetableSlots: pgData.timetableSlots || [],
+              showcaseCards: pgData.showcaseCards || [],
             };
-            this.state.users.unshift(defaultAdmin);
-            setDoc(doc(db, 'users', 'user-admin'), defaultAdmin, { merge: true }).catch(() => {});
-          } else {
-            const adminDoc = this.state.users.find((u) => u.role === 'super_admin' || u.username === 'admin');
-            if (adminDoc) {
-              if (adminDoc.name === 'Dr. Evelyn Reed (Super Admin)' || !adminDoc.name) {
-                adminDoc.name = 'Ashiq CP Hudawi';
-                setDoc(doc(db, 'users', adminDoc.id), { name: 'Ashiq CP Hudawi' }, { merge: true }).catch(() => {});
-              }
-              if (!adminDoc.password) {
-                adminDoc.password = 'admin123';
-                setDoc(doc(db, 'users', adminDoc.id), { password: 'admin123' }, { merge: true }).catch(() => {});
-              }
-            }
+            this.syncStatus = 'connected';
+            this.lastSyncTime = new Date().toLocaleTimeString();
+            this.syncError = null;
+            this.saveLocal();
+            this.notify();
+            return true;
           }
         }
-
-        if (!classesSnap.empty) {
-          this.state.classes = classesSnap.docs.map((d) => d.data() as ClassRoom);
-        }
-
-        if (!studentsSnap.empty) {
-          // Strictly deduplicate students by admission number
-          const uniqueStudentsMap = new Map<string, Student>();
-          const duplicateStudentDocIds: string[] = [];
-
-          studentsSnap.docs.forEach((d) => {
-            const student = d.data() as Student;
-            const adm = String(student.admissionNumber || '').trim().toLowerCase();
-            const key = adm || d.id;
-
-            if (!uniqueStudentsMap.has(key)) {
-              uniqueStudentsMap.set(key, { ...student, id: student.id || d.id });
-            } else {
-              duplicateStudentDocIds.push(d.id);
-            }
-          });
-
-          this.state.students = Array.from(uniqueStudentsMap.values());
-
-          if (duplicateStudentDocIds.length > 0) {
-            this.batchDeleteFirestoreDocs('students', duplicateStudentDocIds).catch(() => {});
-          }
-        }
-
-        if (!teachersSnap.empty) {
-          this.state.teachers = teachersSnap.docs.map((d) => d.data() as Teacher);
-        }
-
-        if (!subjectsSnap.empty) {
-          this.state.subjects = subjectsSnap.docs.map((d) => d.data() as Subject);
-        }
-
-        if (!evalSnap.empty) {
-          this.state.evaluationLevels = evalSnap.docs.map((d) => d.data() as EvaluationLevel);
-        }
-
-        if (!marksSnap.empty) {
-          this.state.marks = marksSnap.docs.map((d) => {
-            const m = d.data() as Mark;
-            if (!m.academicYear) {
-              const c = this.state.classes.find((cl) => cl.id === m.classId);
-              m.academicYear = c?.academicYear || this.state.currentAcademicYear || '2026-2027';
-            }
-            return m;
-          });
-        }
-
-        if (!logsSnap.empty) {
-          this.state.auditLogs = logsSnap.docs.map((d) => d.data() as AuditLog);
-        }
-
-        if (!achievementsSnap.empty) {
-          this.state.achievements = achievementsSnap.docs.map((d) => d.data() as Achievement);
-        }
-
-        if (!behaviorSnap.empty) {
-          this.state.behaviorRecords = behaviorSnap.docs.map((d) => d.data() as BehaviorRecord);
-        }
-
-        if (!slotsSnap.empty) {
-          this.state.activeHourSlots = slotsSnap.docs.map((d) => d.data() as ActiveHourSlot);
-        }
-
-        if (!leavesSnap.empty) {
-          this.state.leaveApplications = leavesSnap.docs.map((d) => {
-            const l = d.data() as LeaveApplication;
-            if (!l.academicYear) {
-              const c = this.state.classes.find((cl) => cl.id === l.classId);
-              l.academicYear = c?.academicYear || this.state.currentAcademicYear || '2026-2027';
-            }
-            return l;
-          });
-        }
-
-        if (!attSnap.empty) {
-          this.state.attendanceRecords = attSnap.docs.map((d) => {
-            const att = d.data() as AttendanceRecord;
-            if (!att.academicYear) {
-              const c = this.state.classes.find((cl) => cl.id === att.classId);
-              att.academicYear = c?.academicYear || this.state.currentAcademicYear || '2026-2027';
-            }
-            return att;
-          });
-        }
-
-        if (!clearanceSnap.empty) {
-          this.state.attendanceClearances = clearanceSnap.docs.map((d) => d.data() as AttendanceClearance);
-        }
-
-        if (!complaintsSnap.empty) {
-          this.state.complaintsFeedback = complaintsSnap.docs.map((d) => d.data() as ComplaintFeedback);
-        }
-
-        if (!showcaseCardsSnap.empty) {
-          this.state.showcaseCards = showcaseCardsSnap.docs.map((d) => d.data() as ShowcaseCard);
-        }
-
-        // Timetable Periods Sync from Firestore (Strictly preserving user customized timings)
-        let incomingPeriods: TimetablePeriodDefinition[] = [];
-        if (ttPeriodsConfigSnap.exists && ttPeriodsConfigSnap.exists() && Array.isArray(ttPeriodsConfigSnap.data()?.periods)) {
-          incomingPeriods = ttPeriodsConfigSnap.data().periods;
-        } else if (!ttPeriodsSnap.empty) {
-          incomingPeriods = ttPeriodsSnap.docs.map((d) => d.data() as TimetablePeriodDefinition);
-        }
-
-        if (incomingPeriods.length > 0) {
-          if (!this.state.timetablePeriods || this.state.timetablePeriods.length === 0) {
-            this.state.timetablePeriods = incomingPeriods;
-          } else {
-            // Intelligent merge by id: prioritize currently saved timings unless remote has periods not present locally
-            const mergedMap = new Map<string, TimetablePeriodDefinition>();
-            // Keep local user-saved periods first
-            this.state.timetablePeriods.forEach((p) => {
-              if (p?.id) mergedMap.set(p.id, p);
-            });
-            // Add any remote period that does not exist in local
-            incomingPeriods.forEach((rp) => {
-              if (rp?.id && !mergedMap.has(rp.id)) {
-                mergedMap.set(rp.id, rp);
-              }
-            });
-            this.state.timetablePeriods = Array.from(mergedMap.values());
-          }
-        }
-
-        // Timetable Slots Sync from Firestore
-        if (ttSlotsConfigSnap.exists && ttSlotsConfigSnap.exists() && ttSlotsConfigSnap.data()?.slots) {
-          this.state.timetableSlots = ttSlotsConfigSnap.data().slots;
-        } else if (!ttSlotsSnap.empty) {
-          this.state.timetableSlots = ttSlotsSnap.docs.map((d) => d.data() as TimetableSlot);
-        } else {
-          this.state.timetableSlots = [];
-        }
-
-        // Auto-detect and sync academic years from real classes in Firestore
-        const classYears = new Set<string>();
-        this.state.classes.forEach((c) => {
-          if (c.academicYear?.trim()) {
-            classYears.add(c.academicYear.trim());
-          }
-        });
-        if (classYears.size > 0) {
-          classYears.forEach((year) => {
-            if (!this.state.academicYears.some((ay) => ay.year === year)) {
-              this.state.academicYears.push({ id: `ay-${year}`, year, isCurrent: false });
-            }
-          });
-          if (classYears.has('2026-2027')) {
-            this.state.currentAcademicYear = '2026-2027';
-          } else {
-            this.state.currentAcademicYear = Array.from(classYears)[0];
-          }
-          this.state.academicYears.forEach((ay) => {
-            ay.isCurrent = ay.year === this.state.currentAcademicYear;
-          });
-        }
-
-        // Link Ashiq teacher profile if present without injecting fake demo IDs
-        const existingAshiqTeacher = this.state.teachers.find(
-          (t) => t.id === 'teacher-1788446643444' || t.username === 'ashiqhudawi' || t.name?.toLowerCase().includes('ashiq')
-        );
-        if (!existingAshiqTeacher) {
-          // If no teacher profile found, add default without fake subjects
-          this.state.teachers.unshift({
-            id: 'teacher-admin',
-            name: 'Ashiq CP Hudawi',
-            phone: '(555) 100-0001',
-            email: 'admin@school.edu',
-            username: 'admin',
-            status: 'active',
-            assignedSubjectIds: [],
-            assignedClassIds: this.state.classes.map((c) => c.id),
-            classTeacherOfClassIds: this.state.classes.slice(0, 1).map((c) => c.id),
-            createdDate: '2026-09-01',
-          });
-        }
-
-        this.saveLocal();
       }
-
       this.syncStatus = 'connected';
       this.lastSyncTime = new Date().toLocaleTimeString();
       this.syncError = null;
       this.notify();
       return true;
     } catch (e: any) {
-      console.warn('Firestore sync note:', e);
+      console.warn('PostgreSQL sync note:', e);
       this.syncStatus = 'error';
-      this.syncError = e?.message || 'Firestore connection or quota issue';
+      this.syncError = e?.message || 'PostgreSQL connection issue';
       this.lastSyncTime = new Date().toLocaleTimeString();
       this.notify();
       return false;
@@ -1448,7 +1145,7 @@ class DataService {
     };
     this.state.auditLogs.unshift(log);
     // Persist to firestore asynchronously
-    setDoc(doc(db, 'audit_logs', log.id), log).catch(() => {});
+    this.persistToPostgres("upsert", "audit_logs", log);
     this.saveLocal();
   }
 
@@ -1513,8 +1210,8 @@ class DataService {
       this.state.users.push(user);
     }
 
-    setDoc(doc(db, 'students', id), newStudent, { merge: true }).catch(() => {});
-    setDoc(doc(db, 'users', user.id), user, { merge: true }).catch(() => {});
+    this.persistToPostgres("upsert", "students", newStudent);
+    this.persistToPostgres("upsert", "users", user);
 
     if (actor) {
       this.addAuditLog({
@@ -1556,10 +1253,10 @@ class DataService {
           status: updates.status || this.state.users[userIdx].status,
           admissionNumber: updates.admissionNumber || this.state.users[userIdx].admissionNumber,
         };
-        setDoc(doc(db, 'users', this.state.users[userIdx].id), this.state.users[userIdx], { merge: true }).catch(() => {});
+        this.persistToPostgres("upsert", "users", this.state.users[userIdx]);
       }
 
-      setDoc(doc(db, 'students', id), this.state.students[idx], { merge: true }).catch(() => {});
+      this.persistToPostgres("upsert", "students", this.state.students[idx]);
 
       if (actor) {
         this.addAuditLog({
@@ -1663,8 +1360,8 @@ class DataService {
     this.batchDeleteFirestoreItems(itemsToDelete).catch(() => {});
 
     // Resilient fallback direct deletion
-    deleteDoc(doc(db, 'students', id)).catch(() => {});
-    userIdsToDelete.forEach((uid) => deleteDoc(doc(db, 'users', uid)).catch(() => {}));
+    this.persistToPostgres('delete', 'students', { id: id });
+    userIdsToDelete.forEach((uid) => { this.persistToPostgres('delete', 'users', { id: uid }); });
 
     if (actor && student) {
       this.addAuditLog({
@@ -1703,8 +1400,8 @@ class DataService {
     this.state.teachers.push(newTeacher);
     this.state.users.push(user);
 
-    setDoc(doc(db, 'teachers', id), newTeacher).catch(() => {});
-    setDoc(doc(db, 'users', user.id), user).catch(() => {});
+    this.persistToPostgres("upsert", "teachers", newTeacher);
+    this.persistToPostgres("upsert", "users", user);
 
     if (actor) {
       this.addAuditLog({
@@ -1754,10 +1451,10 @@ class DataService {
           status: updates.status || this.state.users[userIdx].status,
           password: newPassword ? newPassword : this.state.users[userIdx].password,
         };
-        setDoc(doc(db, 'users', this.state.users[userIdx].id), this.state.users[userIdx]).catch(() => {});
+        this.persistToPostgres("upsert", "users", this.state.users[userIdx]);
       }
 
-      setDoc(doc(db, 'teachers', id), this.state.teachers[idx]).catch(() => {});
+      this.persistToPostgres("upsert", "teachers", this.state.teachers[idx]);
 
       if (actualActor) {
         this.addAuditLog({
@@ -1792,7 +1489,7 @@ class DataService {
     this.state.teachers = this.state.teachers.filter((t) => t.id !== id);
     this.state.users = this.state.users.filter((u) => u.id !== `user-${id}`);
 
-    deleteDoc(doc(db, 'teachers', id)).catch(() => {});
+    this.persistToPostgres('delete', 'teachers', { id: id });
 
     if (actor && teacher) {
       this.addAuditLog({
@@ -1817,7 +1514,7 @@ class DataService {
       id,
     };
     this.state.classes.push(newClass);
-    setDoc(doc(db, 'classes', id), newClass).catch(() => {});
+    this.persistToPostgres("upsert", "classes", newClass);
 
     if (actor) {
       this.addAuditLog({
@@ -1839,7 +1536,7 @@ class DataService {
     const idx = this.state.classes.findIndex((c) => c.id === id);
     if (idx !== -1) {
       this.state.classes[idx] = { ...this.state.classes[idx], ...updates };
-      setDoc(doc(db, 'classes', id), this.state.classes[idx]).catch(() => {});
+      this.persistToPostgres("upsert", "classes", this.state.classes[idx]);
 
       if (actor) {
         this.addAuditLog({
@@ -1860,7 +1557,7 @@ class DataService {
   public deleteClass(id: string, actor?: { id: string; name: string; role: string }) {
     const classRoom = this.state.classes.find((c) => c.id === id);
     this.state.classes = this.state.classes.filter((c) => c.id !== id);
-    deleteDoc(doc(db, 'classes', id)).catch(() => {});
+    this.persistToPostgres('delete', 'classes', { id: id });
 
     if (actor && classRoom) {
       this.addAuditLog({
@@ -1885,7 +1582,7 @@ class DataService {
       id,
     };
     this.state.subjects.push(newSubject);
-    setDoc(doc(db, 'subjects', id), newSubject).catch(() => {});
+    this.persistToPostgres("upsert", "subjects", newSubject);
 
     if (actor) {
       this.addAuditLog({
@@ -1907,7 +1604,7 @@ class DataService {
     const idx = this.state.subjects.findIndex((s) => s.id === id);
     if (idx !== -1) {
       this.state.subjects[idx] = { ...this.state.subjects[idx], ...updates };
-      setDoc(doc(db, 'subjects', id), this.state.subjects[idx]).catch(() => {});
+      this.persistToPostgres("upsert", "subjects", this.state.subjects[idx]);
 
       if (actor) {
         this.addAuditLog({
@@ -1931,7 +1628,7 @@ class DataService {
     this.state.evaluationLevels = this.state.evaluationLevels.filter((el) => el.subjectId !== id);
     this.state.marks = this.state.marks.filter((m) => m.subjectId !== id);
 
-    deleteDoc(doc(db, 'subjects', id)).catch(() => {});
+    this.persistToPostgres('delete', 'subjects', { id: id });
 
     if (actor && subject) {
       this.addAuditLog({
@@ -1956,7 +1653,7 @@ class DataService {
       id,
     };
     this.state.evaluationLevels.push(newLevel);
-    setDoc(doc(db, 'evaluation_levels', id), newLevel).catch(() => {});
+    this.persistToPostgres("upsert", "evaluation_levels", newLevel);
 
     if (actor) {
       this.addAuditLog({
@@ -1993,7 +1690,7 @@ class DataService {
         });
       }
 
-      setDoc(doc(db, 'evaluation_levels', id), this.state.evaluationLevels[idx]).catch(() => {});
+      this.persistToPostgres("upsert", "evaluation_levels", this.state.evaluationLevels[idx]);
 
       if (actor) {
         this.addAuditLog({
@@ -2016,7 +1713,7 @@ class DataService {
     this.state.evaluationLevels = this.state.evaluationLevels.filter((el) => el.id !== id);
     this.state.marks = this.state.marks.filter((m) => m.evaluationLevelId !== id);
 
-    deleteDoc(doc(db, 'evaluation_levels', id)).catch(() => {});
+    this.persistToPostgres('delete', 'evaluation_levels', { id: id });
 
     if (actor && level) {
       this.addAuditLog({
@@ -2081,7 +1778,7 @@ class DataService {
             academicYear: targetAcademicYear,
           };
         }
-        setDoc(doc(db, 'marks', this.state.marks[existingIdx].id), cleanForFirestore(this.state.marks[existingIdx])).catch(() => {});
+        this.persistToPostgres("upsert", "marks", this.state.marks[existingIdx]);
       } else if (m.obtainedMark !== null) {
         const id = `mark-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
         const newMark: Mark = {
@@ -2098,7 +1795,7 @@ class DataService {
           academicYear: targetAcademicYear,
         };
         this.state.marks.push(newMark);
-        setDoc(doc(db, 'marks', id), cleanForFirestore(newMark)).catch(() => {});
+        this.persistToPostgres("upsert", "marks", newMark);
       }
     });
 
@@ -2121,7 +1818,7 @@ class DataService {
     if (user) {
       user.password = newPass;
       user.updatedAt = new Date().toISOString();
-      setDoc(doc(db, 'users', userId), user).catch(() => {});
+      this.persistToPostgres("upsert", "users", user);
       this.saveLocal();
       return true;
     }
@@ -2557,7 +2254,7 @@ class DataService {
       if (updates.name) this.state.users[userIdx].name = updates.name;
       if (updates.phone) this.state.users[userIdx].phone = updates.phone;
       if (updates.email) this.state.users[userIdx].email = updates.email;
-      setDoc(doc(db, 'users', this.state.users[userIdx].id), this.state.users[userIdx], { merge: true }).catch(() => {});
+      this.persistToPostgres("upsert", "users", this.state.users[userIdx]);
     }
 
     if (actor) {
@@ -2574,7 +2271,7 @@ class DataService {
 
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'students', id), updated, { merge: true }).catch(() => {});
+    this.persistToPostgres("upsert", "students", updated);
     return true;
   }
 
@@ -2629,7 +2326,7 @@ class DataService {
 
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'students', studentId), { classTeacherNotes: updatedNotes }, { merge: true }).catch(() => {});
+    this.persistToPostgres("upsert", "students", { classTeacherNotes: updatedNotes });
     return true;
   }
 
@@ -2662,7 +2359,7 @@ class DataService {
 
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'achievements', id), cleanForFirestore(newAchievement)).catch(() => {});
+    this.persistToPostgres("upsert", "achievements", newAchievement);
     return newAchievement;
   }
 
@@ -2689,7 +2386,7 @@ class DataService {
 
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'achievements', id), cleanForFirestore(this.state.achievements[idx]), { merge: true }).catch(() => {});
+    this.persistToPostgres("upsert", "achievements", this.state.achievements[idx]);
     return true;
   }
 
@@ -2712,7 +2409,7 @@ class DataService {
 
     this.saveLocal();
     this.notify();
-    deleteDoc(doc(db, 'achievements', id)).catch(() => {});
+    this.persistToPostgres('delete', 'achievements', { id: id });
     return true;
   }
 
@@ -2745,7 +2442,7 @@ class DataService {
 
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'behavior_records', id), cleanForFirestore(newRecord)).catch(() => {});
+    this.persistToPostgres("upsert", "behavior_records", newRecord);
     return newRecord;
   }
 
@@ -2795,7 +2492,7 @@ class DataService {
 
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'behavior_records', id), cleanForFirestore(this.state.behaviorRecords[idx]), { merge: true }).catch(() => {});
+    this.persistToPostgres("upsert", "behavior_records", this.state.behaviorRecords[idx]);
     return true;
   }
 
@@ -2841,7 +2538,7 @@ class DataService {
 
     this.saveLocal();
     this.notify();
-    deleteDoc(doc(db, 'behavior_records', id)).catch(() => {});
+    this.persistToPostgres('delete', 'behavior_records', { id: id });
     return true;
   }
 
@@ -2868,7 +2565,7 @@ class DataService {
     this.state.activeHourSlots[idx] = updated;
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'active_hour_slots', id), updated, { merge: true }).catch(() => {});
+    this.persistToPostgres("upsert", "active_hour_slots", updated);
     return true;
   }
 
@@ -2887,7 +2584,7 @@ class DataService {
     this.state.activeHourSlots.push(newSlot);
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'active_hour_slots', id), newSlot).catch(() => {});
+    this.persistToPostgres("upsert", "active_hour_slots", newSlot);
     return newSlot;
   }
 
@@ -2898,7 +2595,7 @@ class DataService {
     this.state.activeHourSlots.splice(idx, 1);
     this.saveLocal();
     this.notify();
-    deleteDoc(doc(db, 'active_hour_slots', id)).catch(() => {});
+    this.persistToPostgres('delete', 'active_hour_slots', { id: id });
     return true;
   }
 
@@ -3003,7 +2700,7 @@ class DataService {
     this.state.leaveApplications.unshift(newApp);
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'leave_applications', id), cleanForFirestore(newApp)).catch(() => {});
+    this.persistToPostgres("upsert", "leave_applications", newApp);
     return newApp;
   }
 
@@ -3033,7 +2730,7 @@ class DataService {
 
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'leave_applications', id), cleanForFirestore(this.state.leaveApplications[idx]), { merge: true }).catch(() => {});
+    this.persistToPostgres("upsert", "leave_applications", this.state.leaveApplications[idx]);
     return true;
   }
 
@@ -3052,7 +2749,7 @@ class DataService {
 
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'leave_applications', id), cleanForFirestore(this.state.leaveApplications[idx]), { merge: true }).catch(() => {});
+    this.persistToPostgres("upsert", "leave_applications", this.state.leaveApplications[idx]);
     return true;
   }
 
@@ -3063,7 +2760,7 @@ class DataService {
     this.state.leaveApplications.splice(idx, 1);
     this.saveLocal();
     this.notify();
-    deleteDoc(doc(db, 'leave_applications', id)).catch(() => {});
+    this.persistToPostgres('delete', 'leave_applications', { id: id });
     return true;
   }
 
@@ -3181,7 +2878,7 @@ class DataService {
     this.state.attendanceClearances.unshift(newClr);
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'attendance_clearances', id), cleanForFirestore(newClr)).catch(() => {});
+    this.persistToPostgres("upsert", "attendance_clearances", newClr);
     return newClr;
   }
 
@@ -3192,7 +2889,7 @@ class DataService {
     this.state.attendanceClearances.splice(idx, 1);
     this.saveLocal();
     this.notify();
-    deleteDoc(doc(db, 'attendance_clearances', id)).catch(() => {});
+    this.persistToPostgres('delete', 'attendance_clearances', { id: id });
     return true;
   }
 
@@ -3214,7 +2911,7 @@ class DataService {
 
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'attendance_records', recordId), cleanForFirestore(this.state.attendanceRecords[idx]), { merge: true }).catch(() => {});
+    this.persistToPostgres("upsert", "attendance_records", this.state.attendanceRecords[idx]);
     return true;
   }
 
@@ -3304,7 +3001,7 @@ class DataService {
 
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'student_leave_clearance_applications', id), cleanForFirestore(newApp)).catch(() => {});
+    this.persistToPostgres("upsert", "student_leave_clearance_applications", newApp);
     return newApp;
   }
 
@@ -3351,7 +3048,7 @@ class DataService {
             remarks: `Cleared as ${statusLabel} by ${actorLabel}. Student reason: ${currentApp.reason}`,
             markedAt: new Date().toISOString(),
           };
-          setDoc(doc(db, 'attendance_records', recId), cleanForFirestore(this.state.attendanceRecords[recIdx]), { merge: true }).catch(() => {});
+          this.persistToPostgres("upsert", "attendance_records", this.state.attendanceRecords[recIdx]);
         }
       });
 
@@ -3385,7 +3082,7 @@ class DataService {
 
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'student_leave_clearance_applications', id), cleanForFirestore(updatedApp), { merge: true }).catch(() => {});
+    this.persistToPostgres("upsert", "student_leave_clearance_applications", updatedApp);
     return true;
   }
 
@@ -3396,7 +3093,7 @@ class DataService {
     };
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'system_config', 'attendance_rules'), this.state.attendanceRules, { merge: true }).catch(() => {});
+    this.persistToPostgres("upsert", "system_config", this.state.attendanceRules);
     return this.state.attendanceRules;
   }
 
@@ -3422,7 +3119,7 @@ class DataService {
     this.state.complaintsFeedback.unshift(newComplaint);
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'complaints_feedback', id), newComplaint).catch(() => {});
+    this.persistToPostgres("upsert", "complaints_feedback", newComplaint);
     return newComplaint;
   }
 
@@ -3464,7 +3161,7 @@ class DataService {
 
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'complaints_feedback', id), this.state.complaintsFeedback[idx], { merge: true }).catch(() => {});
+    this.persistToPostgres("upsert", "complaints_feedback", this.state.complaintsFeedback[idx]);
     return true;
   }
 
@@ -3475,7 +3172,7 @@ class DataService {
     this.state.complaintsFeedback.splice(idx, 1);
     this.saveLocal();
     this.notify();
-    deleteDoc(doc(db, 'complaints_feedback', id)).catch(() => {});
+    this.persistToPostgres('delete', 'complaints_feedback', { id: id });
     return true;
   }
 
@@ -3483,7 +3180,7 @@ class DataService {
     this.state.allowedReceiverTypes = types;
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'system_config', 'allowed_receivers'), { types }, { merge: true }).catch(() => {});
+    this.persistToPostgres("upsert", "system_config", { types });
   }
 
   // ==========================================
@@ -3511,7 +3208,7 @@ class DataService {
 
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'subjects', subjectId), this.state.subjects[idx], { merge: true }).catch(() => {});
+    this.persistToPostgres("upsert", "subjects", this.state.subjects[idx]);
     return true;
   }
 
@@ -3531,7 +3228,7 @@ class DataService {
 
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'teachers', teacherId), this.state.teachers[idx], { merge: true }).catch(() => {});
+    this.persistToPostgres("upsert", "teachers", this.state.teachers[idx]);
     return true;
   }
 
@@ -3548,7 +3245,7 @@ class DataService {
     };
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'classes', classId), this.state.classes[idx], { merge: true }).catch(() => {});
+    this.persistToPostgres("upsert", "classes", this.state.classes[idx]);
     return true;
   }
 
@@ -3568,7 +3265,7 @@ class DataService {
 
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'subjects', subjectId), this.state.subjects[idx], { merge: true }).catch(() => {});
+    this.persistToPostgres("upsert", "subjects", this.state.subjects[idx]);
     return true;
   }
 
@@ -3582,7 +3279,7 @@ class DataService {
     };
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'subjects', subjectId), this.state.subjects[idx], { merge: true }).catch(() => {});
+    this.persistToPostgres("upsert", "subjects", this.state.subjects[idx]);
     return true;
   }
 
@@ -3606,10 +3303,10 @@ class DataService {
     });
     this.saveLocal();
     this.notify();
-    const allCleaned = this.state.timetablePeriods.map((p) => cleanForFirestore(p));
-    setDoc(doc(db, 'system_config', 'timetable_periods'), { periods: allCleaned }, { merge: true }).catch(() => {});
+    const allCleaned = this.state.timetablePeriods.map((p) => cleanForDatabase(p));
+    this.persistToPostgres("upsert", "system_config", { periods: allCleaned });
     periods.forEach((p) => {
-      setDoc(doc(db, 'timetable_periods', p.id), cleanForFirestore(p), { merge: true }).catch(() => {});
+      this.persistToPostgres("upsert", "timetable_periods", p);
     });
   }
 
@@ -3629,10 +3326,10 @@ class DataService {
     });
     this.saveLocal();
     this.notify();
-    const cleaned = cleanForFirestore(newPeriod);
-    setDoc(doc(db, 'timetable_periods', newPeriod.id), cleaned, { merge: true }).catch(() => {});
-    const allCleaned = this.state.timetablePeriods.map((p) => cleanForFirestore(p));
-    setDoc(doc(db, 'system_config', 'timetable_periods'), { periods: allCleaned }, { merge: true }).catch(() => {});
+    const cleaned = cleanForDatabase(newPeriod);
+    this.persistToPostgres("upsert", "timetable_periods", cleaned);
+    const allCleaned = this.state.timetablePeriods.map((p) => cleanForDatabase(p));
+    this.persistToPostgres("upsert", "system_config", { periods: allCleaned });
     return newPeriod;
   }
 
@@ -3654,10 +3351,10 @@ class DataService {
     });
     this.saveLocal();
     this.notify();
-    const cleaned = cleanForFirestore(this.state.timetablePeriods[idx]);
-    setDoc(doc(db, 'timetable_periods', id), cleaned, { merge: true }).catch(() => {});
-    const allCleaned = this.state.timetablePeriods.map((p) => cleanForFirestore(p));
-    setDoc(doc(db, 'system_config', 'timetable_periods'), { periods: allCleaned }, { merge: true }).catch(() => {});
+    const cleaned = cleanForDatabase(this.state.timetablePeriods[idx]);
+    this.persistToPostgres("upsert", "timetable_periods", cleaned);
+    const allCleaned = this.state.timetablePeriods.map((p) => cleanForDatabase(p));
+    this.persistToPostgres("upsert", "system_config", { periods: allCleaned });
     return true;
   }
 
@@ -3669,9 +3366,9 @@ class DataService {
     this.state.timetablePeriods.splice(idx, 1);
     this.saveLocal();
     this.notify();
-    deleteDoc(doc(db, 'timetable_periods', id)).catch(() => {});
-    const allCleaned = this.state.timetablePeriods.map((p) => cleanForFirestore(p));
-    setDoc(doc(db, 'system_config', 'timetable_periods'), { periods: allCleaned }, { merge: true }).catch(() => {});
+    this.persistToPostgres('delete', 'timetable_periods', { id: id });
+    const allCleaned = this.state.timetablePeriods.map((p) => cleanForDatabase(p));
+    this.persistToPostgres("upsert", "system_config", { periods: allCleaned });
     return true;
   }
 
@@ -3701,7 +3398,7 @@ class DataService {
     this.state.timetableSlots = slots;
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'system_config', 'timetable_slots'), cleanForFirestore({ slots }), { merge: true }).catch(() => {});
+    this.persistToPostgres("upsert", "system_config", { slots });
   }
 
   public saveTimetableSlot(slot: TimetableSlot): TimetableSlot {
@@ -3718,7 +3415,7 @@ class DataService {
 
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'timetable_slots', id), cleanForFirestore(fullSlot), { merge: true }).catch(() => {});
+    this.persistToPostgres("upsert", "timetable_slots", fullSlot);
     return fullSlot;
   }
 
@@ -3730,7 +3427,7 @@ class DataService {
     this.state.timetableSlots.splice(idx, 1);
     this.saveLocal();
     this.notify();
-    deleteDoc(doc(db, 'timetable_slots', id)).catch(() => {});
+    this.persistToPostgres('delete', 'timetable_slots', { id: id });
     return true;
   }
 
@@ -3768,7 +3465,7 @@ class DataService {
 
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'roles', id), fullRole).catch(() => {});
+    this.persistToPostgres("upsert", "roles", fullRole);
 
     if (actor) {
       this.addAuditLog({
@@ -3804,7 +3501,7 @@ class DataService {
     this.state.roles.splice(idx, 1);
     this.saveLocal();
     this.notify();
-    deleteDoc(doc(db, 'roles', id)).catch(() => {});
+    this.persistToPostgres('delete', 'roles', { id: id });
 
     if (actor) {
       this.addAuditLog({
@@ -3850,7 +3547,7 @@ class DataService {
 
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'teachers', teacherId), teacher).catch(() => {});
+    this.persistToPostgres("upsert", "teachers", teacher);
 
     if (actor) {
       this.addAuditLog({
@@ -3894,7 +3591,7 @@ class DataService {
 
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'teachers', teacherId), teacher).catch(() => {});
+    this.persistToPostgres("upsert", "teachers", teacher);
 
     if (actor) {
       this.addAuditLog({
@@ -3984,7 +3681,7 @@ class DataService {
     this.state.showcaseCards.push(newCard);
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'showcase_cards', newCard.id), newCard).catch(() => {});
+    this.persistToPostgres("upsert", "showcase_cards", newCard);
 
     if (actor) {
       this.addAuditLog({
@@ -4018,7 +3715,7 @@ class DataService {
 
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'showcase_cards', id), this.state.showcaseCards[index]).catch(() => {});
+    this.persistToPostgres("upsert", "showcase_cards", this.state.showcaseCards[index]);
 
     if (actor) {
       this.addAuditLog({
@@ -4055,9 +3752,7 @@ class DataService {
     this.notify();
 
     if (cleanId) {
-      deleteDoc(doc(db, 'showcase_cards', cleanId)).catch((err) => {
-        console.warn(`Error deleting showcase card ${cleanId} from Firestore:`, err);
-      });
+      this.persistToPostgres('delete', 'showcaseCards', { id: cleanId });
     }
 
     if (actor) {
@@ -4093,16 +3788,8 @@ class DataService {
     }
 
     // Query and wipe any lingering docs in showcase_cards collection
-    getDocs(collection(db, 'showcase_cards'))
-      .then((snap) => {
-        if (!snap.empty) {
-          const allDocIds = snap.docs.map((d) => d.id);
-          this.batchDeleteFirestoreDocs('showcase_cards', allDocIds).catch(() => {});
-        }
-      })
-      .catch((err) => {
-        console.warn('Error querying showcase_cards for collection wipe:', err);
-      });
+    // Cleared showcase cards
+
 
     if (actor) {
       this.addAuditLog({
@@ -4133,7 +3820,7 @@ class DataService {
       showcaseCards: cloned,
     };
     cloned.forEach((c) => {
-      setDoc(doc(db, 'showcase_cards', c.id), c).catch(() => {});
+      this.persistToPostgres("upsert", "showcase_cards", c);
     });
 
     this.saveLocal();
@@ -4164,7 +3851,7 @@ class DataService {
       const card = this.state.showcaseCards?.find((c) => c.id === id);
       if (card) {
         card.order = idx + 1;
-        setDoc(doc(db, 'showcase_cards', id), card).catch(() => {});
+        this.persistToPostgres("upsert", "showcase_cards", card);
       }
     });
 
@@ -4198,7 +3885,7 @@ class DataService {
     card.updatedAt = new Date().toISOString();
     this.saveLocal();
     this.notify();
-    setDoc(doc(db, 'showcase_cards', id), card).catch(() => {});
+    this.persistToPostgres("upsert", "showcase_cards", card);
 
     if (actor) {
       this.addAuditLog({

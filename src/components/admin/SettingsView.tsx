@@ -559,7 +559,7 @@ export const SettingsView: React.FC = () => {
         </div>
       )}
 
-      {/* 1. Firebase Cloud Firestore Live Connection Card */}
+      {/* 1. Neon Serverless PostgreSQL Live Connection Card */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-xs space-y-5">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
           <div className="flex items-start gap-3.5">
@@ -573,7 +573,7 @@ export const SettingsView: React.FC = () => {
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                  Google Cloud Firestore Database
+                  Neon Serverless PostgreSQL Database
                 </h2>
                 {syncStatus === 'connected' && (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
@@ -581,27 +581,27 @@ export const SettingsView: React.FC = () => {
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                       <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                     </span>
-                    Active & Connected
+                    Active & Connected (Prisma ORM)
                   </span>
                 )}
                 {syncStatus === 'syncing' && (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-300 border border-blue-300 dark:border-blue-800">
                     <RefreshCw className="w-3 h-3 animate-spin text-blue-600" />
-                    Syncing with Cloud...
+                    Syncing with Neon DB...
                   </span>
                 )}
                 {syncStatus === 'error' && (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800">
                     <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                    Cloud Quota Limit / Paused
+                    Database Connection Issue
                   </span>
                 )}
                 <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                  Dual-Persistence Shielded
+                  Prisma Typed ORM
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                This institutional portal is directly integrated with Google Cloud Firestore (<code className="font-mono text-[11px] text-indigo-600 dark:text-indigo-400 font-bold">ai-studio-studentmarkmanag-a28635d8-791b-4e42-96e4-02e2dcc4ecd6</code>) and caches every record in browser storage without automatic overwrites.
+                This portal is connected to your Neon PostgreSQL database with ACID transaction support and Prisma ORM type safety.
               </p>
             </div>
           </div>
@@ -613,12 +613,12 @@ export const SettingsView: React.FC = () => {
               className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs transition disabled:opacity-50 cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
-              {syncStatus === 'syncing' ? 'Syncing...' : 'Retry Cloud Sync'}
+              {syncStatus === 'syncing' ? 'Syncing...' : 'Refresh Live DB'}
             </button>
           </div>
         </div>
 
-        {/* Quota Exceeded / Diagnostic Notice Banner */}
+        {/* Database Diagnostic Notice Banner */}
         {dataService.getSyncError() && (
           <div className="p-4 rounded-2xl bg-amber-50/90 dark:bg-amber-950/40 border-2 border-amber-200 dark:border-amber-800/80 text-xs space-y-3">
             <div className="flex items-start gap-3">
@@ -627,51 +627,15 @@ export const SettingsView: React.FC = () => {
               </div>
               <div className="space-y-1">
                 <h3 className="font-bold text-amber-900 dark:text-amber-200 text-sm">
-                  Google Cloud Firestore Daily Read Quota Exceeded
+                  Database Connection Notice
                 </h3>
                 <p className="text-amber-800 dark:text-amber-300 leading-relaxed">
-                  Your Google Cloud Firestore database has reached its daily free-tier read limit:
+                  Please verify your DATABASE_URL in .env:
                   <span className="font-mono font-bold block mt-1 p-2 bg-amber-100/80 dark:bg-amber-900/80 rounded-lg text-amber-950 dark:text-amber-100 text-[11px]">
                     {dataService.getSyncError()}
                   </span>
                 </p>
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 text-slate-700 dark:text-slate-300 text-[11px]">
-              <div className="p-3 bg-white/80 dark:bg-slate-900/80 rounded-xl border border-amber-200/60 dark:border-amber-900/40">
-                <strong className="block text-slate-900 dark:text-white font-bold mb-1">1. Is my data lost?</strong>
-                No! All documents you entered into classes, students, marks, and attendance remain stored in your Google Cloud database and in your browser's local cache. They are not erased.
-              </div>
-              <div className="p-3 bg-white/80 dark:bg-slate-900/80 rounded-xl border border-amber-200/60 dark:border-amber-900/40">
-                <strong className="block text-slate-900 dark:text-white font-bold mb-1">2. Why does it look empty here?</strong>
-                Because Google Cloud paused reads for today, opening the app in a new window, browser, or URL cannot pull data from the cloud until the quota resets.
-              </div>
-              <div className="p-3 bg-white/80 dark:bg-slate-900/80 rounded-xl border border-amber-200/60 dark:border-amber-900/40">
-                <strong className="block text-slate-900 dark:text-white font-bold mb-1">3. When does it reset?</strong>
-                Daily free quotas reset every 24 hours at midnight Pacific Time (~12:30 PM IST). You can also upgrade your project in the Firebase Console.
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 pt-2 flex-wrap">
-              <a
-                href="https://console.firebase.google.com/project/astute-runway-96shk/firestore/databases/ai-studio-studentmarkmanag-a28635d8-791b-4e42-96e4-02e2dcc4ecd6/data?openUpgradeDialog=true"
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-xs shadow-xs transition"
-              >
-                <span>Open Firebase Console Database</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
-              <a
-                href="https://firebase.google.com/pricing#cloud-firestore"
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 border border-slate-300 dark:border-slate-700 rounded-lg font-semibold text-xs transition"
-              >
-                <span>Firestore Quota Limits Documentation</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
             </div>
           </div>
         )}
@@ -685,11 +649,11 @@ export const SettingsView: React.FC = () => {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-5">
           <div className="p-3.5 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
-            <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Database ID</div>
-            <div className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200 mt-1 truncate" title="ai-studio-studentmarkmanag-a28635d8-791b-4e42-96e4-02e2dcc4ecd6">
-              ai-studio-studentmarkmanag...
+            <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Database Engine</div>
+            <div className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200 mt-1 truncate">
+              Neon PostgreSQL
             </div>
-            <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Project: astute-runway-96shk</div>
+            <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">ORM: Prisma Client</div>
           </div>
 
           <div className="p-3.5 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">

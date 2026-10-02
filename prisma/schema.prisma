@@ -1,0 +1,422 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id              String   @id @default(cuid())
+  username        String   @unique
+  role            String   // 'super_admin' | 'teacher' | 'student'
+  name            String
+  email           String?
+  phone           String?
+  admissionNumber String?
+  studentId       String?
+  status          String   @default("active") // 'active' | 'inactive'
+  password        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([username])
+  @@index([role])
+}
+
+model ClassRoom {
+  id                  String    @id @default(cuid())
+  name                String
+  academicYear        String
+  classTeacherId      String?
+  status              String    @default("active")
+  isAttendanceEnabled Boolean   @default(true)
+  createdDate         DateTime  @default(now())
+
+  students            Student[]
+  subjects            Subject[]
+
+  @@index([academicYear])
+}
+
+model Student {
+  id                 String    @id @default(cuid())
+  admissionNumber    String    @unique
+  name               String
+  classId            String
+  class              ClassRoom @relation(fields: [classId], references: [id], onDelete: Cascade)
+  phone              String?
+  email              String?
+  username           String    @unique
+  status             String    @default("active")
+  createdDate        DateTime  @default(now())
+  enrollmentDate     DateTime?
+  photoUrl           String?
+  dob                String?
+  gender             String?
+  bloodGroup         String?
+  address            String?
+  rollNumber         String?
+  guardian           Json?
+  classTeacherNotes  Json?
+  electiveSubjectIds String[]  @default([])
+
+  marks              Mark[]
+  achievements       Achievement[]
+  behaviorRecords    BehaviorRecord[]
+  leaveApplications  LeaveApplication[]
+  attendanceRecords  AttendanceRecord[]
+  attendanceClearances AttendanceClearance[]
+  leaveClearanceApplications StudentLeaveClearanceApplication[]
+  complaintsFeedback ComplaintFeedback[]
+
+  @@index([classId])
+  @@index([admissionNumber])
+  @@index([username])
+}
+
+model Teacher {
+  id                     String   @id @default(cuid())
+  name                   String
+  phone                  String?
+  email                  String?
+  username               String   @unique
+  status                 String   @default("active")
+  assignedSubjectIds     String[] @default([])
+  assignedClassIds       String[] @default([])
+  classTeacherOfClassIds String[] @default([])
+  createdDate            DateTime @default(now())
+  specialRoleTitle       String?
+  canManageAllAttendance Boolean  @default(false)
+  roleIds                String[] @default([])
+  customPermissions      String[] @default([])
+  deniedPermissions      String[] @default([])
+
+  @@index([username])
+}
+
+model Subject {
+  id                   String            @id @default(cuid())
+  name                 String
+  code                 String
+  classId              String
+  class                ClassRoom         @relation(fields: [classId], references: [id], onDelete: Cascade)
+  assignedTeacherId    String?
+  teacherId            String?
+  status               String            @default("active")
+  trackAttendance      Boolean           @default(true)
+  isSplitSubject       Boolean           @default(false)
+  splitGroupName       String?
+  enrolledStudentIds   String[]          @default([])
+  additionalTeacherIds String[]          @default([])
+
+  evaluationLevels     EvaluationLevel[]
+  marks                Mark[]
+  attendanceRecords    AttendanceRecord[]
+
+  @@index([classId])
+}
+
+model EvaluationLevel {
+  id           String    @id @default(cuid())
+  subjectId    String
+  subject      Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  name         String
+  maximumMark  Float
+  displayOrder Int       @default(0)
+  status       String    @default("active")
+
+  marks        Mark[]
+
+  @@index([subjectId])
+}
+
+model Mark {
+  id                String          @id @default(cuid())
+  studentId         String
+  student           Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  classId           String
+  subjectId         String
+  subject           Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  evaluationLevelId String
+  evaluationLevel   EvaluationLevel @relation(fields: [evaluationLevelId], references: [id], onDelete: Cascade)
+  maximumMark       Float
+  obtainedMark      Float?
+  date              String
+  enteredBy         String
+  lastUpdated       DateTime        @default(now())
+  academicYear      String?
+
+  @@index([studentId])
+  @@index([subjectId])
+  @@index([evaluationLevelId])
+}
+
+model AcademicYear {
+  id        String  @id @default(cuid())
+  year      String  @unique
+  isCurrent Boolean @default(false)
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  userName  String
+  role      String
+  action    String
+  entity    String
+  entityId  String
+  details   String
+  timestamp DateTime @default(now())
+
+  @@index([userId])
+  @@index([timestamp])
+}
+
+model Achievement {
+  id             String   @id @default(cuid())
+  studentId      String
+  student        Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  title          String
+  category       String
+  date           String
+  description    String
+  positionPrize  String?
+  awardedBy      String?
+  level          String?
+  certificateUrl String?
+  createdDate    DateTime @default(now())
+
+  @@index([studentId])
+}
+
+model BehaviorRecord {
+  id             String   @id @default(cuid())
+  studentId      String
+  student        Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  type           String
+  title          String
+  description    String
+  severity       String?
+  actionTaken    String?
+  points         Int?
+  followUpStatus String?
+  recordedBy     String
+  recordedById   String?
+  recordedByName String?
+  recordedByRole String
+  date           String
+
+  @@index([studentId])
+}
+
+model ActiveHourSlot {
+  id              String  @id @default(cuid())
+  label           String
+  startTime       String
+  endTime         String
+  durationMinutes Int
+  isActive        Boolean @default(true)
+}
+
+model LeaveApplication {
+  id                     String    @id @default(cuid())
+  studentId              String
+  student                Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentAdmissionNumber String
+  studentName            String
+  classId                String
+  academicYear           String?
+  leaveType              String
+  startDate              String
+  endDate                String
+  startTime              String?
+  endTime                String?
+  slotsIncluded          String[]  @default([])
+  totalDurationMinutes   Int
+  totalDurationFormatted String
+  reason                 String
+  status                 String    @default("pending")
+  appliedAt              DateTime  @default(now())
+  reviewedBy             String?
+  reviewedByName         String?
+  reviewedAt             DateTime?
+  hasArrived             Boolean   @default(false)
+  arrivedAt              DateTime?
+  remarks                String?
+
+  @@index([studentId])
+  @@index([status])
+}
+
+model AttendanceRecord {
+  id             String   @id @default(cuid())
+  date           String
+  academicYear   String?
+  classId        String
+  subjectId      String
+  subject        Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  period         Int
+  studentId      String
+  student        Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  status         String
+  lateArrivalTime String?
+  lateReason     String?
+  markedBy       String
+  markedAt       DateTime @default(now())
+  remarks        String?
+
+  @@index([date, classId, subjectId, period])
+  @@index([studentId, date])
+}
+
+model AttendanceClearance {
+  id                 String   @id @default(cuid())
+  studentId          String
+  student            Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subjectId          String?
+  grantedBy          String
+  grantedByName      String
+  grantedByRole      String
+  approvedPercentage Float?
+  reason             String
+  clearedDate        DateTime @default(now())
+  academicYear       String
+  notes              String?
+
+  @@index([studentId])
+}
+
+model StudentLeaveClearanceApplication {
+  id                     String    @id @default(cuid())
+  studentId              String
+  student                Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentName            String
+  studentAdmissionNumber String
+  classId                String
+  className              String
+  academicYear           String?
+  subjectId              String
+  subjectName            String
+  recordIds              String[]  @default([])
+  dates                  String[]  @default([])
+  periods                Int[]     @default([])
+  clearanceType          String
+  reason                 String
+  status                 String    @default("pending")
+  appliedAt              DateTime  @default(now())
+  reviewedBy             String?
+  reviewedByName         String?
+  reviewedByRole         String?
+  reviewedAt             DateTime?
+  reviewRemarks          String?
+
+  @@index([studentId])
+  @@index([status])
+}
+
+model ComplaintFeedback {
+  id                     String    @id @default(cuid())
+  studentId              String
+  student                Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentAdmissionNumber String
+  studentName            String
+  classId                String
+  receiverType           String
+  title                  String
+  category               String
+  message                String
+  status                 String    @default("pending")
+  response               String?
+  respondedBy            String?
+  respondedByName        String?
+  respondedAt            DateTime?
+  submittedAt            DateTime  @default(now())
+  isAnonymous            Boolean   @default(false)
+
+  @@index([studentId])
+  @@index([status])
+  @@index([receiverType])
+}
+
+model AttendanceRulesConfig {
+  id                               String   @id @default("default")
+  maxOfficialLeavePercent          Float    @default(10)
+  maxCasualLeavePercent            Float    @default(15)
+  maxTotalLeavesPercent            Float    @default(25)
+  maxOfficialCasualCombinedPercent Float    @default(15)
+  minRequiredAttendancePercent     Float    @default(85)
+  academicLeaveCountedAsPresent    Boolean  @default(true)
+  clearanceAllowedRoles            String[] @default([])
+  clearanceTeacherIds              String[] @default([])
+  customRoleRules                  Json?
+}
+
+model TimetablePeriodDefinition {
+  id           String  @id @default(cuid())
+  periodNumber Int
+  name         String
+  startTime    String
+  endTime      String
+  isBreak      Boolean @default(false)
+  breakLabel   String?
+}
+
+model TimetableSlot {
+  id           String  @id @default(cuid())
+  dayOfWeek    String
+  periodNumber Int
+  classId      String
+  subjectId    String
+  teacherId    String?
+  room         String?
+  isSplitSlot  Boolean @default(false)
+
+  @@index([classId, dayOfWeek])
+}
+
+model RoleDefinition {
+  id          String   @id
+  name        String
+  description String?
+  isSystem    Boolean  @default(false)
+  permissions String[] @default([])
+}
+
+model ShowcaseCard {
+  id                     String   @id @default(cuid())
+  title                  String
+  subtitle               String?
+  studentName            String
+  studentAdmissionNumber String?
+  studentId              String?
+  percentage             String
+  scoreDetails           String?
+  sectionOrClass         String
+  classId                String?
+  category               String
+  priority               Int      @default(1)
+  badgeText              String?
+  imageUrl               String?
+  description            String?
+  accentGradient         String   @default("gold")
+  targetAudience         String   @default("all")
+  targetRoles            String[] @default([])
+  targetClassIds         String[] @default([])
+  targetStudentIds       String[] @default([])
+  order                  Int      @default(0)
+  isActive               Boolean  @default(true)
+  examName               String?
+  academicYear           String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  createdBy              String?
+  createdByName          String?
+}
+
+model SystemLockSettings {
+  id                  String  @id @default("default")
+  isLevelAddingLocked Boolean @default(false)
+  isMarkEntryLocked   Boolean @default(false)
+}

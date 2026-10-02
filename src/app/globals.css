@@ -1,0 +1,106 @@
+@import "tailwindcss";
+@variant dark (&:where(.dark, .dark *));
+
+/* =========================================================================
+   🖨️ INSTITUTIONAL PRINT ENGINE
+   Ensures ONLY official document parts print cleanly.
+   Hides all portal chrome: sidebars, navbars, buttons, mobile nav, modal overlays.
+   ========================================================================= */
+@media print {
+  /* Hide all portal chrome and interactive UI elements */
+  #portal-sidebar,
+  #portal-navbar,
+  #mobile-bottom-nav,
+  aside,
+  header,
+  nav,
+  footer,
+  button,
+  .no-print,
+  .print-hidden,
+  .print\:hidden,
+  [data-no-print="true"] {
+    display: none !important;
+    animation: none !important;
+  }
+
+  /* Reset layout constraints so pages flow naturally across multiple sheets */
+  html,
+  body,
+  #root,
+  .flex.h-screen,
+  div[class*="h-screen"],
+  main,
+  div[class*="overflow-y-auto"],
+  div[class*="overflow-hidden"] {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    position: static !important;
+    display: block !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Ensure ink-friendly colors and sharp text contrast */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* Force light theme colors on paper */
+  .dark {
+    color-scheme: light !important;
+  }
+
+  /* Printable document container styling */
+  .printable-document,
+  .print-document,
+  .print-only,
+  .print\:block {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Modal un-nesting for clean document print */
+  .printable-modal-container {
+    position: static !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+  }
+
+  /* Avoid cutting table rows or cards across page boundaries */
+  tr,
+  table,
+  .print-avoid-break,
+  .dossier-card {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Standard A4 portrait margin setup */
+  @page {
+    size: A4 portrait;
+    margin: 10mm 10mm 10mm 10mm;
+  }
+}
