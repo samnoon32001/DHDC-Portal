@@ -33,7 +33,8 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
     currentSection === 'admin-dashboard' ||
     currentSection === 'teacher-dashboard' ||
     currentSection === 'student-dashboard';
-  const isAttendanceActive = currentSection === 'attendance';
+  const isAttendanceActive =
+    currentSection === 'attendance' || currentSection === 'attendance-settings';
   const isCceActive =
     currentSection === 'student-marks' ||
     currentSection === 'mark-entry' ||
@@ -41,72 +42,84 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
     currentSection === 'cce-grade-report';
   const isLeaveActive = currentSection === 'leaves';
 
+  const navItems = [
+    {
+      id: 'btn-mobile-nav-home',
+      label: 'Home',
+      icon: Home,
+      isActive: isHomeActive,
+      onClick: () => onSelectSection(getHomeSection()),
+    },
+    {
+      id: 'btn-mobile-nav-hajar',
+      label: 'Hajar',
+      icon: CalendarCheck,
+      isActive: isAttendanceActive,
+      onClick: () => onSelectSection('attendance'),
+    },
+    {
+      id: 'btn-mobile-nav-cce',
+      label: 'CCE',
+      icon: Award,
+      isActive: isCceActive,
+      onClick: () => onSelectSection(getCceSection()),
+    },
+    {
+      id: 'btn-mobile-nav-leave',
+      label: 'Leave',
+      icon: Clock,
+      isActive: isLeaveActive,
+      onClick: () => onSelectSection('leaves'),
+    },
+  ];
+
   return (
     <nav
       id="mobile-bottom-nav"
-      className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-lg px-2 py-1 safe-area-pb"
+      className="md:hidden fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-2rem)] max-w-sm sm:max-w-md bg-white/95 dark:bg-[#18181b]/95 backdrop-blur-xl border border-slate-200/80 dark:border-neutral-800 rounded-full shadow-[0_12px_36px_-6px_rgba(0,0,0,0.14)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.6)] px-2 py-2 safe-area-pb transition-all duration-300"
       aria-label="Mobile Bottom Navigation"
     >
-      <div className="flex items-center justify-around max-w-lg mx-auto">
-        {/* 1. Home */}
-        <button
-          id="btn-mobile-nav-home"
-          type="button"
-          onClick={() => onSelectSection(getHomeSection())}
-          className={`flex flex-col items-center justify-center py-1.5 px-3 rounded-xl transition-all active:scale-95 focus:outline-none ${
-            isHomeActive
-              ? 'text-emerald-700 font-semibold bg-emerald-50/80 shadow-xs'
-              : 'text-slate-600 hover:text-emerald-700'
-          }`}
-        >
-          <Home className={`w-5 h-5 mb-0.5 ${isHomeActive ? 'text-emerald-700 stroke-[2.4]' : ''}`} />
-          <span className="text-[11px] font-medium tracking-tight">Home</span>
-        </button>
+      <div className="flex items-center justify-around w-full">
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <button
+              key={item.id}
+              id={item.id}
+              type="button"
+              onClick={item.onClick}
+              className="group relative flex flex-col items-center justify-center flex-1 py-1 focus:outline-none select-none transition-transform active:scale-95 cursor-pointer"
+            >
+              {/* Capsule icon container */}
+              <div
+                className={`w-14 sm:w-16 h-8 rounded-full flex items-center justify-center transition-all duration-300 ease-out ${
+                  item.isActive
+                    ? 'bg-slate-100 dark:bg-white/15 text-slate-900 dark:text-white shadow-xs'
+                    : 'bg-transparent text-slate-400 dark:text-neutral-400 group-hover:text-slate-700 dark:group-hover:text-neutral-200 group-hover:bg-slate-50 dark:group-hover:bg-white/5'
+                }`}
+              >
+                <Icon
+                  className={`w-5 h-5 transition-transform duration-200 ${
+                    item.isActive
+                      ? 'stroke-[2.2] scale-105'
+                      : 'stroke-[1.8]'
+                  }`}
+                />
+              </div>
 
-        {/* 2. Hajar (Attendance) */}
-        <button
-          id="btn-mobile-nav-hajar"
-          type="button"
-          onClick={() => onSelectSection('attendance')}
-          className={`flex flex-col items-center justify-center py-1.5 px-3 rounded-xl transition-all active:scale-95 focus:outline-none ${
-            isAttendanceActive
-              ? 'text-emerald-700 font-semibold bg-emerald-50/80 shadow-xs'
-              : 'text-slate-600 hover:text-emerald-700'
-          }`}
-        >
-          <CalendarCheck className={`w-5 h-5 mb-0.5 ${isAttendanceActive ? 'text-emerald-700 stroke-[2.4]' : ''}`} />
-          <span className="text-[11px] font-medium tracking-tight">Hajar</span>
-        </button>
-
-        {/* 3. CCE */}
-        <button
-          id="btn-mobile-nav-cce"
-          type="button"
-          onClick={() => onSelectSection(getCceSection())}
-          className={`flex flex-col items-center justify-center py-1.5 px-3 rounded-xl transition-all active:scale-95 focus:outline-none ${
-            isCceActive
-              ? 'text-emerald-700 font-semibold bg-emerald-50/80 shadow-xs'
-              : 'text-slate-600 hover:text-emerald-700'
-          }`}
-        >
-          <Award className={`w-5 h-5 mb-0.5 ${isCceActive ? 'text-emerald-700 stroke-[2.4]' : ''}`} />
-          <span className="text-[11px] font-medium tracking-tight">CCE</span>
-        </button>
-
-        {/* 4. Leave */}
-        <button
-          id="btn-mobile-nav-leave"
-          type="button"
-          onClick={() => onSelectSection('leaves')}
-          className={`flex flex-col items-center justify-center py-1.5 px-3 rounded-xl transition-all active:scale-95 focus:outline-none ${
-            isLeaveActive
-              ? 'text-emerald-700 font-semibold bg-emerald-50/80 shadow-xs'
-              : 'text-slate-600 hover:text-emerald-700'
-          }`}
-        >
-          <Clock className={`w-5 h-5 mb-0.5 ${isLeaveActive ? 'text-emerald-700 stroke-[2.4]' : ''}`} />
-          <span className="text-[11px] font-medium tracking-tight">Leave</span>
-        </button>
+              {/* Text label */}
+              <span
+                className={`text-[11px] font-medium tracking-tight mt-1 transition-colors duration-200 ${
+                  item.isActive
+                    ? 'text-slate-900 dark:text-white font-semibold'
+                    : 'text-slate-400 dark:text-neutral-400 group-hover:text-slate-600 dark:group-hover:text-neutral-300'
+                }`}
+              >
+                {item.label}
+              </span>
+            </button>
+          );
+        })}
       </div>
     </nav>
   );
