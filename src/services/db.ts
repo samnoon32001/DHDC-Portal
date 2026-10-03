@@ -26,6 +26,7 @@ import type {
   DayOfWeek,
   TimetableSlot,
   ShowcaseCard,
+  InstitutionSettings,
 } from '../types';
 import { RoleDefinition, INITIAL_DEFAULT_ROLES } from '../utils/permissions';
 
@@ -59,6 +60,7 @@ export interface DatabaseState {
   timetableSlots?: TimetableSlot[];
   roles?: RoleDefinition[];
   showcaseCards?: ShowcaseCard[];
+  institutionSettings?: InstitutionSettings;
 }
 
 export function cleanForDatabase<T>(obj: T): T {
@@ -79,6 +81,24 @@ export function cleanForDatabase<T>(obj: T): T {
 }
 
 export const INITIAL_SHOWCASE_CARDS: ShowcaseCard[] = [];
+
+export const DEFAULT_INSTITUTION_SETTINGS: InstitutionSettings = {
+  id: 'default',
+  name: "DARUL HIDAYA DA'WA COLLEGE, MANOOR",
+  shortName: 'DHDC PORTAL',
+  subtitle: 'College Management & Academic Portal',
+  address: 'Manoor, P.O. Edappal, Malappuram Dt., Kerala 679578',
+  logoUrl: '/icons/icon-192.svg',
+  faviconUrl: '/favicon.svg',
+  appIconUrl: '/icons/icon-512.svg',
+  phone: '+91 494 268 0000',
+  email: 'dhdcmanoor@gmail.com',
+  website: 'https://dhdc.in',
+  affiliationNumber: 'DHDC-EDU-MANOOR',
+  establishedYear: '1998',
+  reportCardHeader: "DARUL HIDAYA DA'WA COLLEGE, MANOOR",
+  reportCardFooter: 'Continuous & Comprehensive Evaluation (CCE) Student Report Card',
+};
 
 export const INITIAL_TIMETABLE_PERIODS: TimetablePeriodDefinition[] = [
   { id: 'p-1', periodNumber: 1, name: 'Period 1', startTime: '07:45', endTime: '08:30', isBreak: false },
@@ -149,6 +169,7 @@ export const INITIAL_STATE: DatabaseState = {
   timetableSlots: [],
   roles: INITIAL_DEFAULT_ROLES,
   showcaseCards: [],
+  institutionSettings: DEFAULT_INSTITUTION_SETTINGS,
 };
 
 class DataService {
@@ -162,6 +183,7 @@ class DataService {
   constructor() {
     this.state = this.loadLocal();
     this.initFirestoreSync();
+    this.applyDomBranding();
   }
 
   private loadLocal(): DatabaseState {
@@ -211,6 +233,17 @@ class DataService {
       }
       if (!state.timetableSlots || state.timetableSlots.length === 0) {
         state.timetableSlots = JSON.parse(JSON.stringify(INITIAL_STATE.timetableSlots || []));
+      }
+      if (!state.institutionSettings) {
+        state.institutionSettings = JSON.parse(JSON.stringify(DEFAULT_INSTITUTION_SETTINGS));
+      } else {
+        if (!state.institutionSettings.name || state.institutionSettings.name.includes('St. Jude') || state.institutionSettings.name.includes('ST. JUDE')) {
+          state.institutionSettings.name = "DARUL HIDAYA DA'WA COLLEGE, MANOOR";
+        }
+        state.institutionSettings = {
+          ...DEFAULT_INSTITUTION_SETTINGS,
+          ...state.institutionSettings,
+        };
       }
       // Ensure classes have attendance toggle enabled by default
       if (state.classes) {
@@ -588,6 +621,14 @@ class DataService {
         this.state.showcaseCards = cards;
         restoredCount += cards.length;
       }
+      const inst = source.institution_settings || source.institutionSettings;
+      if (inst && typeof inst === 'object') {
+        const instObj = Array.isArray(inst) ? inst[0] : inst;
+        if (instObj && instObj.name) {
+          this.state.institutionSettings = { ...DEFAULT_INSTITUTION_SETTINGS, ...instObj };
+          restoredCount += 1;
+        }
+      }
 
       this.saveLocal();
       this.notify();
@@ -675,6 +716,81 @@ class DataService {
       });
     }
     this.notify();
+  }
+
+  // --- INSTITUTION & BRANDING SETTINGS ---
+  public getInstitutionSettings(): InstitutionSettings {
+    if (!this.state.institutionSettings) {
+      this.state.institutionSettings = JSON.parse(JSON.stringify(DEFAULT_INSTITUTION_SETTINGS));
+    }
+    return { ...DEFAULT_INSTITUTION_SETTINGS, ...this.state.institutionSettings };
+  }
+
+  public applyDomBranding(settings?: InstitutionSettings) {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    const current = settings || this.getInstitutionSettings();
+
+    // 1. Update Document Title
+    if (current.shortName || current.name) {
+      const brandName = current.name || "DARUL HIDAYA DA'WA COLLEGE, MANOOR";
+      const shortBrand = current.shortName || 'DHDC PORTAL';
+      document.title = `${shortBrand} | ${brandName}`;
+    }
+
+    // 2. Update Favicon
+    const favicon = current.faviconUrl || '/favicon.svg';
+    let iconLink = document.querySelector("link[rel*='icon']") as HTMLLinkElement;
+    if (!iconLink) {
+      iconLink = document.createElement('link');
+      iconLink.rel = 'icon';
+      iconLink.type = 'image/svg+xml';
+      document.getElementsByTagName('head')[0]?.appendChild(iconLink);
+    }
+    iconLink.href = favicon;
+
+    // 3. Update Apple Touch Icon / Web App Icon
+    const appIcon = current.appIconUrl || current.logoUrl;
+    if (appIcon) {
+      let appleIcon = document.querySelector("link[rel='apple-touch-icon']") as HTMLLinkElement;
+      if (!appleIcon) {
+        appleIcon = document.createElement('link');
+        appleIcon.rel = 'apple-touch-icon';
+        document.getElementsByTagName('head')[0]?.appendChild(appleIcon);
+      }
+      appleIcon.href = appIcon;
+    }
+  }
+
+  public async updateInstitutionSettings(
+    updates: Partial<InstitutionSettings>,
+    actor?: { id: string; name: string; role: string }
+  ): Promise<boolean> {
+    const prev = this.getInstitutionSettings();
+    const updated: InstitutionSettings = {
+      ...prev,
+      ...updates,
+      id: 'default',
+      updatedAt: new Date().toISOString(),
+    };
+    this.state.institutionSettings = updated;
+    this.saveLocal();
+    this.applyDomBranding(updated);
+
+    if (actor) {
+      this.addAuditLog({
+        userId: actor.id,
+        userName: actor.name,
+        role: actor.role,
+        action: 'Update Institution Branding',
+        entity: 'System Settings',
+        entityId: 'settings-institution',
+        details: `Updated institution name: "${updated.name}", short name: "${updated.shortName}"`,
+      });
+    }
+
+    this.notify();
+    await this.persistToPostgres('upsert', 'institution_settings', updated);
+    return true;
   }
 
   // --- BULK OPERATIONS ---

@@ -508,3 +508,26 @@ export interface ShowcaseCard {
   createdBy?: string;
   createdByName?: string;
 }
+
+// ==========================================
+// 🏛️ INSTITUTION & SYSTEM BRANDING SETTINGS
+// ==========================================
+export interface InstitutionSettings {
+  id?: string;
+  name: string; // e.g. "DARUL HIDAYA DA'WA COLLEGE, MANOOR"
+  shortName: string; // e.g. "DHDC Portal"
+  subtitle?: string; // e.g. "College Management & Academic Portal"
+  address?: string; // e.g. "Manoor, P.O. Edappal, Malappuram Dt., Kerala 679578"
+  logoUrl?: string; // Custom Logo data URL / URL
+  faviconUrl?: string; // Custom Favicon data URL / URL
+  appIconUrl?: string; // PWA Web App Icon data URL / URL
+  phone?: string;
+  email?: string;
+  website?: string;
+  affiliationNumber?: string;
+  establishedYear?: string;
+  reportCardHeader?: string;
+  reportCardFooter?: string;
+  updatedAt?: string;
+}
+

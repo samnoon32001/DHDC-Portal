@@ -345,14 +345,27 @@ export const StudentMarksView: React.FC = () => {
         <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 border-2 border-slate-200 dark:border-slate-800 shadow-lg print:border-none print:shadow-none print:p-0">
           {/* Institution Header */}
           <div className="text-center pb-6 border-b-2 border-slate-900 dark:border-slate-100">
-            <div className="flex items-center justify-center gap-2 mb-1">
-              <School className="w-6 h-6 text-blue-600" />
-              <h2 className="text-xl font-black uppercase tracking-wider text-slate-900 dark:text-white">
-                St. Jude Academy of Educational Excellence
+            <div className="flex items-center justify-center gap-3 mb-1.5">
+              {dataService.getInstitutionSettings().logoUrl ? (
+                <img
+                  src={dataService.getInstitutionSettings().logoUrl}
+                  alt="Institution Logo"
+                  className="w-10 h-10 object-contain rounded-lg shadow-xs"
+                />
+              ) : (
+                <School className="w-7 h-7 text-indigo-600 dark:text-indigo-400" />
+              )}
+              <h2 className="text-xl sm:text-2xl font-black uppercase tracking-wider text-slate-900 dark:text-white">
+                {dataService.getInstitutionSettings().name || "DARUL HIDAYA DA'WA COLLEGE, MANOOR"}
               </h2>
             </div>
-            <p className="text-xs text-slate-500 uppercase tracking-widest font-semibold">
-              Continuous & Comprehensive Evaluation (CCE) Student Report Card
+            {dataService.getInstitutionSettings().address && (
+              <p className="text-xs text-slate-500 font-medium">
+                {dataService.getInstitutionSettings().address}
+              </p>
+            )}
+            <p className="text-xs text-slate-600 dark:text-slate-400 uppercase tracking-widest font-semibold mt-1">
+              {dataService.getInstitutionSettings().reportCardFooter || 'Continuous & Comprehensive Evaluation (CCE) Student Report Card'}
             </p>
             <p className="text-xs text-slate-400 mt-0.5">
               Academic Year: {studentClass?.academicYear || state.currentAcademicYear}

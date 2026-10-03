@@ -1190,7 +1190,7 @@ export const StudentDossierModal: React.FC<StudentDossierModalProps> = ({
 
         {/* Modal Footer */}
         <div className="px-6 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80 flex items-center justify-between text-xs text-slate-500 shrink-0">
-          <span>Student Dossier • DHDC Portal</span>
+          <span>Student Dossier • {dataService.getInstitutionSettings().shortName || 'DHDC Portal'}</span>
           <button
             onClick={onClose}
             className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg font-medium cursor-pointer"

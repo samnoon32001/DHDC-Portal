@@ -415,12 +415,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Brand Header matching Professional Polish Design */}
       <div className="p-4 sm:p-5 flex items-center justify-between border-b border-slate-800/80">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center text-white shadow-sm shadow-indigo-500/30 shrink-0">
-            <BookOpen className="w-5 h-5" />
-          </div>
+          {dataService.getInstitutionSettings().logoUrl ? (
+            <img
+              src={dataService.getInstitutionSettings().logoUrl}
+              alt="Logo"
+              className="w-8 h-8 rounded-lg object-contain bg-slate-800 p-0.5 border border-slate-700 shadow-sm shrink-0"
+            />
+          ) : (
+            <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center text-white shadow-sm shadow-indigo-500/30 shrink-0">
+              <BookOpen className="w-5 h-5" />
+            </div>
+          )}
           <div className="flex flex-col min-w-0">
-            <span className="text-white font-bold text-base tracking-tight truncate">DHDC Portal</span>
-            <span className="text-[10px] text-slate-400 font-medium tracking-wide truncate">College Main Portal</span>
+            <span className="text-white font-bold text-base tracking-tight truncate">
+              {dataService.getInstitutionSettings().shortName || 'DHDC Portal'}
+            </span>
+            <span className="text-[10px] text-slate-400 font-medium tracking-wide truncate">
+              {dataService.getInstitutionSettings().subtitle || 'DARUL HIDAYA DA\'WA COLLEGE'}
+            </span>
           </div>
         </div>
         {onCloseMobile && (

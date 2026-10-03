@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
-const ENTITY_MODEL_MAP: Record<string, keyof typeof prisma> = {
+const ENTITY_MODEL_MAP: Record<string, string> = {
   users: 'user',
   user: 'user',
   students: 'student',
@@ -53,6 +53,8 @@ const ENTITY_MODEL_MAP: Record<string, keyof typeof prisma> = {
   showcaseCard: 'showcaseCard',
   attendanceRules: 'attendanceRulesConfig',
   systemLocks: 'systemLockSettings',
+  institution_settings: 'institutionSettings',
+  institutionSettings: 'institutionSettings',
 };
 
 export async function GET() {
@@ -81,6 +83,7 @@ export async function GET() {
       roles,
       showcaseCards,
       systemLocks,
+      institutionSettings,
     ] = await Promise.all([
       prisma.user.findMany(),
       prisma.student.findMany(),
@@ -105,6 +108,7 @@ export async function GET() {
       prisma.roleDefinition.findMany(),
       prisma.showcaseCard.findMany({ orderBy: [{ priority: 'asc' }, { order: 'asc' }] }),
       prisma.systemLockSettings.findUnique({ where: { id: 'default' } }),
+      (prisma as any).institutionSettings?.findUnique({ where: { id: 'default' } }).catch(() => null) ?? Promise.resolve(null),
     ]);
 
     let finalUsers = users;
@@ -177,6 +181,17 @@ export async function GET() {
       timetableSlots,
       roles,
       showcaseCards,
+      institutionSettings: institutionSettings || {
+        id: 'default',
+        name: "DARUL HIDAYA DA'WA COLLEGE, MANOOR",
+        shortName: 'DHDC Portal',
+        subtitle: 'College Management & Academic Portal',
+        address: 'Manoor, P.O. Edappal, Malappuram Dt., Kerala 679578',
+        phone: '+91 494 268 0000',
+        email: 'dhdcmanoor@gmail.com',
+        website: 'https://dhdc.in',
+        affiliationNumber: 'DHDC-EDU-MANOOR',
+      },
     });
   } catch (error: any) {
     console.error('Fetch data API error:', error);

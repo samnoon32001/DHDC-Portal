@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <defs>
+    <linearGradient id="dhdcBg192" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6452ff" />
+      <stop offset="45%" stop-color="#4f39f6" />
+      <stop offset="100%" stop-color="#2c17b8" />
+    </linearGradient>
+    <linearGradient id="goldCap192" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a" />
+      <stop offset="40%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+    <linearGradient id="glowRing192" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.35" />
+      <stop offset="100%" stop-color="#4f39f6" stop-opacity="0.05" />
+    </linearGradient>
+    <filter id="subtleShadow192" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#090533" flood-opacity="0.4" />
+    </filter>
+  </defs>
+
+  <!-- Background with 4f39f6 Theme Gradient -->
+  <rect width="192" height="192" rx="42" fill="url(#dhdcBg192)" />
+  <rect width="188" height="188" x="2" y="2" rx="40" fill="none" stroke="url(#glowRing192)" stroke-width="2" />
+  
+  <!-- Subtle Ornamental Outer Ring -->
+  <circle cx="96" cy="78" r="54" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-dasharray="5,4" opacity="0.25"/>
+
+  <!-- Academic Emblem: Mortarboard & Book -->
+  <g transform="translate(42, 28)" filter="url(#subtleShadow192)">
+    <!-- Graduation Mortarboard Diamond -->
+    <path d="M54 10 L98 32 L54 54 L10 32 Z" fill="url(#goldCap192)" stroke="#ffffff" stroke-width="1.5" />
+    <!-- Cap Skull Base -->
+    <path d="M26 42 L26 66 C26 78, 82 78, 82 66 L82 42" fill="none" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" />
+    <!-- Golden Tassel with Ribbon -->
+    <path d="M98 32 C98 48, 97 60, 94 66" fill="none" stroke="#fde047" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="94" cy="68" r="3.5" fill="#fde047" />
+    
+    <!-- Open Book -->
+    <path d="M18 80 C34 74, 50 78, 54 84 C58 78, 74 74, 90 80 L90 94 C74 88, 58 92, 54 97 C50 92, 34 88, 18 94 Z" fill="#ffffff" />
+    <path d="M54 84 L54 97" stroke="#4f39f6" stroke-width="2" stroke-linecap="round" />
+  </g>
+
+  <!-- DHDC PORTAL Wordmark -->
+  <g transform="translate(96, 154)">
+    <rect x="-68" y="-14" width="136" height="24" rx="7" fill="#090533" fill-opacity="0.45" stroke="#ffffff" stroke-width="0.75" stroke-opacity="0.2" />
+    <text x="0" y="3" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif" font-size="11.5" font-weight="900" letter-spacing="1.5" fill="#ffffff" text-anchor="middle">
+      DHDC PORTAL
+    </text>
+  </g>
+</svg>

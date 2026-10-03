@@ -43,6 +43,7 @@ import { StudentProfileView } from './components/student/StudentProfileView';
 import { StudentSubjectsView } from './components/student/StudentSubjectsView';
 import { StudentMarksView } from './components/student/StudentMarksView';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { PWAInstallPrompt } from './components/common/PWAInstallPrompt';
 
 const MainLayout: React.FC = () => {
   const { currentUser, role } = useAuth();
@@ -181,6 +182,7 @@ export default function App() {
     <ThemeProvider>
       <AuthProvider>
         <MainLayout />
+        <PWAInstallPrompt />
       </AuthProvider>
     </ThemeProvider>
   );

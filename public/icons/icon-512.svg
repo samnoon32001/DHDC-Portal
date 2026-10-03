@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="dhdcBg512" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6452ff" />
+      <stop offset="45%" stop-color="#4f39f6" />
+      <stop offset="100%" stop-color="#2c17b8" />
+    </linearGradient>
+    <linearGradient id="goldCap512" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a" />
+      <stop offset="40%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+    <linearGradient id="glowRing512" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.35" />
+      <stop offset="100%" stop-color="#4f39f6" stop-opacity="0.05" />
+    </linearGradient>
+    <filter id="subtleShadow512" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#090533" flood-opacity="0.45" />
+    </filter>
+  </defs>
+
+  <!-- Background with 4f39f6 Theme Gradient -->
+  <rect width="512" height="512" rx="112" fill="url(#dhdcBg512)" />
+  <rect width="502" height="502" x="5" y="5" rx="107" fill="none" stroke="url(#glowRing512)" stroke-width="5" />
+  
+  <!-- Subtle Ornamental Outer Ring -->
+  <circle cx="256" cy="210" r="145" fill="none" stroke="#ffffff" stroke-width="3" stroke-dasharray="14,10" opacity="0.25"/>
+
+  <!-- Academic Emblem: Mortarboard & Book -->
+  <g transform="translate(112, 75)" filter="url(#subtleShadow512)">
+    <!-- Graduation Mortarboard Diamond -->
+    <path d="M144 26 L262 86 L144 146 L26 86 Z" fill="url(#goldCap512)" stroke="#ffffff" stroke-width="4" />
+    <!-- Cap Skull Base -->
+    <path d="M70 114 L70 178 C70 210, 218 210, 218 178 L218 114" fill="none" stroke="#ffffff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" />
+    <!-- Golden Tassel with Ribbon -->
+    <path d="M262 86 C262 130, 258 160, 252 176" fill="none" stroke="#fde047" stroke-width="8" stroke-linecap="round"/>
+    <circle cx="252" cy="182" r="9" fill="#fde047" />
+    
+    <!-- Open Book -->
+    <path d="M48 216 C90 200, 134 210, 144 226 C154 210, 198 200, 240 216 L240 254 C198 238, 154 248, 144 262 C134 248, 90 238, 48 254 Z" fill="#ffffff" />
+    <path d="M144 226 L144 262" stroke="#4f39f6" stroke-width="5" stroke-linecap="round" />
+  </g>
+
+  <!-- DHDC PORTAL Wordmark Badge -->
+  <g transform="translate(256, 412)">
+    <rect x="-180" y="-36" width="360" height="64" rx="20" fill="#090533" fill-opacity="0.45" stroke="#ffffff" stroke-width="2" stroke-opacity="0.2" />
+    <text x="0" y="8" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif" font-size="30" font-weight="900" letter-spacing="4" fill="#ffffff" text-anchor="middle">
+      DHDC PORTAL
+    </text>
+  </g>
+</svg>

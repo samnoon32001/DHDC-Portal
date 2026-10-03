@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { dataService } from '../../services/db';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { dataService, DEFAULT_INSTITUTION_SETTINGS } from '../../services/db';
+import type { InstitutionSettings } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import {
   Settings,
@@ -33,6 +34,15 @@ import {
   ShieldCheck,
   Archive,
   Upload,
+  School,
+  Image as ImageIcon,
+  Globe,
+  Phone,
+  Mail,
+  Smartphone,
+  Sparkles,
+  MapPin,
+  Laptop,
 } from 'lucide-react';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 
@@ -73,6 +83,15 @@ export const SettingsView: React.FC = () => {
   const [yearError, setYearError] = useState<string | null>(null);
   const [yearSuccess, setYearSuccess] = useState<string | null>(null);
   const [deletingYearId, setDeletingYearId] = useState<string | null>(null);
+
+  // Institution & Web App Branding State
+  const [institutionForm, setInstitutionForm] = useState<InstitutionSettings>(dataService.getInstitutionSettings());
+  const [instSaveSuccess, setInstSaveSuccess] = useState<string | null>(null);
+  const [instLogoFileError, setInstLogoFileError] = useState<string | null>(null);
+  const [isSavingInst, setIsSavingInst] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
+  const faviconInputRef = useRef<HTMLInputElement | null>(null);
+  const appIconInputRef = useRef<HTMLInputElement | null>(null);
 
   // Lock status
   const isLevelLocked = dataService.isLevelAddingLocked();
@@ -149,6 +168,65 @@ export const SettingsView: React.FC = () => {
       setTimeout(() => setYearSuccess(null), 3000);
     }
     setDeletingYearId(null);
+  };
+
+  // Handle image file selection (Logo, Favicon, App Icon)
+  const handleImageUpload = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    targetField: 'logoUrl' | 'faviconUrl' | 'appIconUrl'
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setInstLogoFileError('Please select a valid image file (PNG, JPG, SVG, WebP, ICO).');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setInstLogoFileError('Image file size should be less than 2MB for fast portal loading.');
+      return;
+    }
+    setInstLogoFileError(null);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      setInstitutionForm((prev) => ({
+        ...prev,
+        [targetField]: result,
+      }));
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleSaveInstitution = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingInst(true);
+    setInstSaveSuccess(null);
+    const actor = currentUser
+      ? { id: currentUser.id, name: currentUser.name, role: currentUser.role }
+      : undefined;
+
+    await dataService.updateInstitutionSettings(institutionForm, actor);
+    setIsSavingInst(false);
+    setInstSaveSuccess('Institution details, logos, favicon, and app branding updated successfully!');
+    setTimeout(() => setInstSaveSuccess(null), 4000);
+  };
+
+  const handleResetInstitution = () => {
+    if (
+      window.confirm(
+        "Reset institution settings and branding back to DARUL HIDAYA DA'WA COLLEGE, MANOOR default profiles?"
+      )
+    ) {
+      setInstitutionForm(DEFAULT_INSTITUTION_SETTINGS);
+      dataService.updateInstitutionSettings(DEFAULT_INSTITUTION_SETTINGS);
+      setInstSaveSuccess('Institution details reset to college default.');
+      setTimeout(() => setInstSaveSuccess(null), 3000);
+    }
+  };
+
+  const handleTriggerPWAInstall = () => {
+    window.dispatchEvent(new CustomEvent('dhdc-trigger-pwa-install'));
   };
 
   const handleManualSync = async () => {
@@ -368,6 +446,15 @@ export const SettingsView: React.FC = () => {
         badgeColor: 'bg-indigo-100 text-indigo-800 border-indigo-300 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800',
         data: state.academicYears || [],
       },
+      {
+        id: 'institution_settings',
+        name: 'Institution & Portal Branding',
+        firestoreCollection: 'institution_settings',
+        description: 'Institution legal name, address, campus metadata, custom logo, favicon, and PWA web app icons.',
+        category: 'System & Security',
+        badgeColor: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800',
+        data: [dataService.getInstitutionSettings()],
+      },
     ];
   }, [state]);
 
@@ -558,6 +645,461 @@ export const SettingsView: React.FC = () => {
           </button>
         </div>
       )}
+
+      {/* 🏛️ Institution Profile & Branding Configuration */}
+      <div id="institution-branding-settings" className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-xs space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
+          <div className="flex items-start gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0 shadow-inner">
+              <School className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                  Institution Identity & Web App Branding
+                </h2>
+                <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                  Active
+                </span>
+                <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 flex items-center gap-1">
+                  <Smartphone className="w-3 h-3" /> PWA Enabled
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                Configure your official college name, campus address, custom logo, favicon, and Progressive Web App install icon.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={handleTriggerPWAInstall}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-xl text-xs font-bold transition cursor-pointer"
+              title="Test web app install prompt"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Test Install App</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleResetInstitution}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Reset Defaults</span>
+            </button>
+          </div>
+        </div>
+
+        {instSaveSuccess && (
+          <div className="p-3.5 text-xs rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 flex items-center gap-2 animate-fadeIn">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span className="font-medium">{instSaveSuccess}</span>
+          </div>
+        )}
+
+        {instLogoFileError && (
+          <div className="p-3.5 text-xs rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60 flex items-center gap-2 animate-fadeIn">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span className="font-medium">{instLogoFileError}</span>
+          </div>
+        )}
+
+        {/* Live Visual Header Preview Box */}
+        <div className="p-4 rounded-2xl bg-slate-900 text-white border border-slate-800 shadow-inner flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5 min-w-0">
+            {institutionForm.logoUrl ? (
+              <img
+                src={institutionForm.logoUrl}
+                alt="Logo Preview"
+                className="w-12 h-12 rounded-xl object-contain bg-slate-800 p-1 border border-slate-700 shadow-sm shrink-0"
+              />
+            ) : (
+              <div className="w-12 h-12 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-lg shadow-md shrink-0">
+                <School className="w-6 h-6" />
+              </div>
+            )}
+            <div className="min-w-0">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-indigo-400 block">
+                Live Branding Header Preview
+              </span>
+              <h3 className="text-base sm:text-lg font-black tracking-tight text-white truncate">
+                {institutionForm.name || "DARUL HIDAYA DA'WA COLLEGE, MANOOR"}
+              </h3>
+              <p className="text-xs text-slate-300 truncate">
+                {institutionForm.shortName || 'DHDC Portal'} • {institutionForm.address || 'Manoor, Kerala'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 self-end md:self-auto shrink-0 text-xs">
+            <div className="text-right hidden sm:block">
+              <span className="text-slate-400 block text-[10px]">Affiliation / Reg Code</span>
+              <span className="font-mono font-bold text-amber-400">{institutionForm.affiliationNumber || 'DHDC-EDU-MANOOR'}</span>
+            </div>
+          </div>
+        </div>
+
+        <form onSubmit={handleSaveInstitution} className="space-y-6">
+          {/* Section 1: Institution Names & Taglines */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center gap-1.5">
+                <School className="w-4 h-4 text-indigo-500" />
+                Institution Full Name <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={institutionForm.name}
+                onChange={(e) => setInstitutionForm({ ...institutionForm, name: e.target.value })}
+                placeholder="e.g. DARUL HIDAYA DA'WA COLLEGE, MANOOR"
+                className="w-full px-3.5 py-2.5 text-sm border border-slate-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-semibold focus:ring-2 focus:ring-indigo-500 outline-none transition"
+              />
+              <span className="text-[11px] text-slate-400 mt-1 block">
+                Appears on all student report cards, printable dossiers, login header, and official certificates.
+              </span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                Portal Short Name / Brand Title <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={institutionForm.shortName}
+                onChange={(e) => setInstitutionForm({ ...institutionForm, shortName: e.target.value })}
+                placeholder="e.g. DHDC Portal"
+                className="w-full px-3.5 py-2 text-sm border border-slate-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                Portal Subtitle / Department Tagline
+              </label>
+              <input
+                type="text"
+                value={institutionForm.subtitle || ''}
+                onChange={(e) => setInstitutionForm({ ...institutionForm, subtitle: e.target.value })}
+                placeholder="e.g. College Management & Academic Portal"
+                className="w-full px-3.5 py-2 text-sm border border-slate-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center gap-1.5">
+                <MapPin className="w-4 h-4 text-emerald-500" />
+                Campus & Postal Address
+              </label>
+              <textarea
+                rows={2}
+                value={institutionForm.address || ''}
+                onChange={(e) => setInstitutionForm({ ...institutionForm, address: e.target.value })}
+                placeholder="e.g. Manoor, P.O. Edappal, Malappuram Dt., Kerala 679578"
+                className="w-full px-3.5 py-2 text-sm border border-slate-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition resize-y"
+              />
+            </div>
+          </div>
+
+          {/* Section 2: Logo, Favicon & PWA Web App Icon */}
+          <div className="border-t border-slate-100 dark:border-slate-800 pt-5">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+              <ImageIcon className="w-4 h-4 text-indigo-500" />
+              Visual Assets & Icons (Logo, Favicon, Web App Icon)
+            </h3>
+
+            {/* Hidden File Inputs */}
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/*"
+              onChange={(e) => handleImageUpload(e, 'logoUrl')}
+              className="hidden"
+            />
+            <input
+              ref={faviconInputRef}
+              type="file"
+              accept="image/*,.ico"
+              onChange={(e) => handleImageUpload(e, 'faviconUrl')}
+              className="hidden"
+            />
+            <input
+              ref={appIconInputRef}
+              type="file"
+              accept="image/*"
+              onChange={(e) => handleImageUpload(e, 'appIconUrl')}
+              className="hidden"
+            />
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* 1. Institution Logo Card */}
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col justify-between space-y-3">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">Institution Logo</span>
+                    <span className="text-[10px] text-slate-400">Header & Reports</span>
+                  </div>
+                  <div className="mt-3 flex items-center justify-center h-24 bg-white dark:bg-slate-900 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 overflow-hidden p-2">
+                    {institutionForm.logoUrl ? (
+                      <img
+                        src={institutionForm.logoUrl}
+                        alt="Logo"
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center text-slate-400 text-xs">
+                        <ImageIcon className="w-6 h-6 mb-1 text-slate-400" />
+                        <span>Default Crest</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => logoInputRef.current?.click()}
+                      className="flex-1 py-1.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs transition cursor-pointer"
+                    >
+                      Upload Logo
+                    </button>
+                    {institutionForm.logoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setInstitutionForm({ ...institutionForm, logoUrl: '' })}
+                        className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition cursor-pointer"
+                        title="Remove Logo"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    value={institutionForm.logoUrl || ''}
+                    onChange={(e) => setInstitutionForm({ ...institutionForm, logoUrl: e.target.value })}
+                    placeholder="Or enter image URL"
+                    className="w-full px-2.5 py-1 text-[11px] border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 outline-none font-mono truncate"
+                  />
+                </div>
+              </div>
+
+              {/* 2. Browser Tab Favicon Card */}
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col justify-between space-y-3">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">Browser Favicon</span>
+                    <span className="text-[10px] text-slate-400">Tab Icon (.ico / .svg)</span>
+                  </div>
+                  <div className="mt-3 flex items-center justify-center h-24 bg-white dark:bg-slate-900 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 overflow-hidden p-2">
+                    {institutionForm.faviconUrl ? (
+                      <img
+                        src={institutionForm.faviconUrl}
+                        alt="Favicon"
+                        className="w-10 h-10 object-contain"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center text-slate-400 text-xs">
+                        <Globe className="w-6 h-6 mb-1 text-slate-400" />
+                        <span>Default Favicon</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => faviconInputRef.current?.click()}
+                      className="flex-1 py-1.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs transition cursor-pointer"
+                    >
+                      Upload Favicon
+                    </button>
+                    {institutionForm.faviconUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setInstitutionForm({ ...institutionForm, faviconUrl: '' })}
+                        className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition cursor-pointer"
+                        title="Remove Favicon"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    value={institutionForm.faviconUrl || ''}
+                    onChange={(e) => setInstitutionForm({ ...institutionForm, faviconUrl: e.target.value })}
+                    placeholder="Or enter favicon URL"
+                    className="w-full px-2.5 py-1 text-[11px] border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 outline-none font-mono truncate"
+                  />
+                </div>
+              </div>
+
+              {/* 3. Progressive Web App (PWA) App Icon Card */}
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col justify-between space-y-3">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">Web App (PWA) Icon</span>
+                    <span className="text-[10px] text-slate-400">Mobile Home Screen</span>
+                  </div>
+                  <div className="mt-3 flex items-center justify-center h-24 bg-white dark:bg-slate-900 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 overflow-hidden p-2">
+                    {institutionForm.appIconUrl || institutionForm.logoUrl ? (
+                      <img
+                        src={institutionForm.appIconUrl || institutionForm.logoUrl}
+                        alt="App Icon"
+                        className="w-12 h-12 rounded-xl object-contain shadow-sm border border-slate-200 dark:border-slate-700 p-1"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center text-slate-400 text-xs">
+                        <Smartphone className="w-6 h-6 mb-1 text-slate-400" />
+                        <span>Default PWA Icon</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => appIconInputRef.current?.click()}
+                      className="flex-1 py-1.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs transition cursor-pointer"
+                    >
+                      Upload App Icon
+                    </button>
+                    {institutionForm.appIconUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setInstitutionForm({ ...institutionForm, appIconUrl: '' })}
+                        className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition cursor-pointer"
+                        title="Remove App Icon"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    value={institutionForm.appIconUrl || ''}
+                    onChange={(e) => setInstitutionForm({ ...institutionForm, appIconUrl: e.target.value })}
+                    placeholder="Or enter app icon URL"
+                    className="w-full px-2.5 py-1 text-[11px] border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 outline-none font-mono truncate"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 3: Contact Details & Report Card Customizations */}
+          <div className="border-t border-slate-100 dark:border-slate-800 pt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1.5">
+                <Phone className="w-3.5 h-3.5 text-slate-400" /> Phone Number
+              </label>
+              <input
+                type="text"
+                value={institutionForm.phone || ''}
+                onChange={(e) => setInstitutionForm({ ...institutionForm, phone: e.target.value })}
+                placeholder="+91 494 268 0000"
+                className="w-full px-3 py-2 text-xs border border-slate-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1.5">
+                <Mail className="w-3.5 h-3.5 text-slate-400" /> Official Email
+              </label>
+              <input
+                type="email"
+                value={institutionForm.email || ''}
+                onChange={(e) => setInstitutionForm({ ...institutionForm, email: e.target.value })}
+                placeholder="dhdcmanoor@gmail.com"
+                className="w-full px-3 py-2 text-xs border border-slate-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5 text-slate-400" /> Website URL
+              </label>
+              <input
+                type="text"
+                value={institutionForm.website || ''}
+                onChange={(e) => setInstitutionForm({ ...institutionForm, website: e.target.value })}
+                placeholder="https://dhdc.in"
+                className="w-full px-3 py-2 text-xs border border-slate-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Affiliation / Reg Code
+              </label>
+              <input
+                type="text"
+                value={institutionForm.affiliationNumber || ''}
+                onChange={(e) => setInstitutionForm({ ...institutionForm, affiliationNumber: e.target.value })}
+                placeholder="DHDC-EDU-MANOOR"
+                className="w-full px-3 py-2 text-xs border border-slate-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none font-mono"
+              />
+            </div>
+          </div>
+
+          {/* Section 4: Printable Report Card Note */}
+          <div className="border-t border-slate-100 dark:border-slate-800 pt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Report Card Header Tagline
+              </label>
+              <input
+                type="text"
+                value={institutionForm.reportCardHeader || ''}
+                onChange={(e) => setInstitutionForm({ ...institutionForm, reportCardHeader: e.target.value })}
+                placeholder="e.g. DARUL HIDAYA DA'WA COLLEGE, MANOOR"
+                className="w-full px-3 py-2 text-xs border border-slate-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Report Card Footer Note
+              </label>
+              <input
+                type="text"
+                value={institutionForm.reportCardFooter || ''}
+                onChange={(e) => setInstitutionForm({ ...institutionForm, reportCardFooter: e.target.value })}
+                placeholder="Continuous & Comprehensive Evaluation (CCE) Student Report Card"
+                className="w-full px-3 py-2 text-xs border border-slate-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Save Button Bar */}
+          <div className="border-t border-slate-100 dark:border-slate-800 pt-5 flex items-center justify-end gap-3">
+            <button
+              type="submit"
+              disabled={isSavingInst}
+              className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 flex items-center gap-2 transition disabled:opacity-50 cursor-pointer"
+            >
+              {isSavingInst ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Saving Settings...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Save Institution & Branding Settings</span>
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
 
       {/* 1. Neon Serverless PostgreSQL Live Connection Card */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-xs space-y-5">

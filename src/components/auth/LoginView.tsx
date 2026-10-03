@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { ThemeToggle } from '../common/ThemeToggle';
+import { dataService } from '../../services/db';
 import {
   GraduationCap,
   Lock,
@@ -10,6 +11,7 @@ import {
   Eye,
   EyeOff,
   Loader2,
+  School,
 } from 'lucide-react';
 
 export const LoginView: React.FC = () => {
@@ -62,13 +64,26 @@ export const LoginView: React.FC = () => {
       <div className="relative z-10 w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xl shadow-slate-200/40 dark:shadow-slate-950/50 p-8 sm:p-10 transition-all">
         {/* Institutional Branding */}
         <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-600/25 mx-auto mb-4">
-            <GraduationCap className="w-7 h-7" />
-          </div>
+          {dataService.getInstitutionSettings().logoUrl ? (
+            <div className="w-16 h-16 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center shadow-md p-2 mx-auto mb-4">
+              <img
+                src={dataService.getInstitutionSettings().logoUrl}
+                alt="Logo"
+                className="w-full h-full object-contain"
+              />
+            </div>
+          ) : (
+            <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-600/25 mx-auto mb-4">
+              <GraduationCap className="w-7 h-7" />
+            </div>
+          )}
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-            DHDC Portal
+            {dataService.getInstitutionSettings().shortName || 'DHDC Portal'}
           </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1.5">
+          <p className="text-xs font-medium text-indigo-600 dark:text-indigo-400 mt-0.5 uppercase tracking-wide">
+            {dataService.getInstitutionSettings().name || "DARUL HIDAYA DA'WA COLLEGE, MANOOR"}
+          </p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Sign in to access your dashboard
           </p>
         </div>

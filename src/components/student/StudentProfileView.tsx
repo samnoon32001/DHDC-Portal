@@ -707,18 +707,26 @@ export const StudentProfileView: React.FC = () => {
         <div className="pb-5 border-b-2 border-slate-900">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-4">
-              <div className="w-14 h-14 bg-indigo-900 text-white rounded-xl flex items-center justify-center font-serif text-2xl font-black border-2 border-slate-900">
-                DH
-              </div>
+              {dataService.getInstitutionSettings().logoUrl ? (
+                <img
+                  src={dataService.getInstitutionSettings().logoUrl}
+                  alt="Logo"
+                  className="w-14 h-14 object-contain rounded-xl border border-slate-300 p-1"
+                />
+              ) : (
+                <div className="w-14 h-14 bg-indigo-900 text-white rounded-xl flex items-center justify-center font-serif text-2xl font-black border-2 border-slate-900">
+                  DH
+                </div>
+              )}
               <div>
                 <h1 className="text-xl font-black uppercase tracking-wider text-slate-900">
-                  Darul Huda Islamic University
+                  {dataService.getInstitutionSettings().name || "DARUL HIDAYA DA'WA COLLEGE, MANOOR"}
                 </h1>
                 <p className="text-xs uppercase tracking-widest font-bold text-slate-700 mt-0.5">
-                  DHDC Central Portal • Office of Registrar & Academic Records
+                  {dataService.getInstitutionSettings().shortName || 'DHDC Portal'} • Office of Registrar & Academic Records
                 </p>
                 <p className="text-[11px] text-slate-600">
-                  Affiliated Higher Secondary Collegiate Complex • Continuous Evaluation Cell
+                  {dataService.getInstitutionSettings().address || 'Affiliated Collegiate Complex • Continuous Evaluation Cell'}
                 </p>
               </div>
             </div>

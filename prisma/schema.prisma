@@ -420,3 +420,23 @@ model SystemLockSettings {
   isLevelAddingLocked Boolean @default(false)
   isMarkEntryLocked   Boolean @default(false)
 }
+
+model InstitutionSettings {
+  id                String   @id @default("default")
+  name              String   @default("DARUL HIDAYA DA'WA COLLEGE, MANOOR")
+  shortName         String   @default("DHDC Portal")
+  subtitle          String?  @default("Continuous & Comprehensive Evaluation System")
+  address           String?  @default("Manoor, P.O. Edappal, Malappuram Dt., Kerala 679578")
+  logoUrl           String?
+  faviconUrl        String?
+  appIconUrl        String?
+  phone             String?  @default("+91 494 268 0000")
+  email             String?  @default("dhdcmanoor@gmail.com")
+  website           String?  @default("https://dhdc.in")
+  affiliationNumber String?  @default("DHDC-EDU-MANOOR")
+  establishedYear   String?  @default("1998")
+  reportCardHeader  String?  @default("DARUL HIDAYA DA'WA COLLEGE, MANOOR")
+  reportCardFooter  String?  @default("Continuous & Comprehensive Evaluation (CCE) Student Report Card")
+  updatedAt         DateTime @default(now()) @updatedAt
+}
+
