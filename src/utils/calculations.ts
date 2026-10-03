@@ -37,13 +37,23 @@ export function calculateCCETotal(items: MarkItem[]): CCEResult {
 
   for (const item of items) {
     if (item.obtainedMark !== null && item.obtainedMark !== undefined && !isNaN(item.obtainedMark)) {
-      totalObtained += Number(item.obtainedMark);
+      const itemMax = Number(item.maximumMark ?? item.maxMark) || 0;
+      const rawObt = Number(item.obtainedMark);
+      // Strictly prevent marks from exceeding individual maximum or falling below 0
+      const validObtained = itemMax > 0 ? Math.min(Math.max(0, rawObt), itemMax) : Math.max(0, rawObt);
+      totalObtained += validObtained;
       completedCount++;
     }
   }
 
-  const percentage = totalMaximum > 0 ? (totalObtained / totalMaximum) * 100 : 0;
-  const weightedMark = totalMaximum > 0 ? (totalObtained / totalMaximum) * 30 : 0;
+  // Strictly clamp total obtained to total maximum
+  const safeTotalObtained = totalMaximum > 0 ? Math.min(totalObtained, totalMaximum) : totalObtained;
+  
+  // Percentage strictly clamped between 0 and 100%
+  const percentage = totalMaximum > 0 ? Math.min(100, Math.max(0, (safeTotalObtained / totalMaximum) * 100)) : 0;
+  
+  // Final mark strictly calculated out of 30 and capped at 30.00
+  const weightedMark = totalMaximum > 0 ? Math.min(30, Math.max(0, (safeTotalObtained / totalMaximum) * 30)) : 0;
   
   // Format to exactly 2 decimal places
   const roundedWeighted = Math.round(weightedMark * 100) / 100;
@@ -51,7 +61,7 @@ export function calculateCCETotal(items: MarkItem[]): CCEResult {
 
   return {
     totalMaximum: Math.round(totalMaximum * 100) / 100,
-    totalObtained: Math.round(totalObtained * 100) / 100,
+    totalObtained: Math.round(safeTotalObtained * 100) / 100,
     percentage: Math.round(percentage * 100) / 100,
     weightedMark: roundedWeighted,
     finalMarkOutOf30: roundedWeighted,
@@ -61,6 +71,7 @@ export function calculateCCETotal(items: MarkItem[]): CCEResult {
     isFullyCompleted: items.length > 0 && completedCount === items.length,
   };
 }
+
 
 /**
  * Validates entered mark:

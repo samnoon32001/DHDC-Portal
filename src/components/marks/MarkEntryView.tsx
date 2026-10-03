@@ -37,10 +37,14 @@ export const MarkEntryView: React.FC = () => {
 
   // Find teacher profile if logged in as teacher
   const teacherProfile = state.teachers.find(
-    (t) => t.username === currentUser?.username || t.email === currentUser?.email
+    (t) =>
+      t.id === currentUser?.id ||
+      t.id === (currentUser as any)?.teacherId ||
+      t.username === currentUser?.username ||
+      t.email === currentUser?.email
   );
 
-  // Available classes: Super Admin sees all; Teacher sees assigned classes
+  // Available classes: Super Admin sees all; Teacher sees only classes where they teach assigned subjects
   const availableClasses = useMemo(() => {
     if (role === 'super_admin') return state.classes;
     if (!teacherProfile) return [];
@@ -49,9 +53,7 @@ export const MarkEntryView: React.FC = () => {
       .filter((s) => s.assignedTeacherId === teacherProfile.id || teacherProfile.assignedSubjectIds?.includes(s.id))
       .map((s) => s.classId);
 
-    const allIds = Array.from(
-      new Set([...(teacherProfile.assignedClassIds || []), ...teacherSubClassIds])
-    );
+    const allIds = Array.from(new Set(teacherSubClassIds));
     return state.classes.filter((c) => allIds.includes(c.id));
   }, [role, teacherProfile, state.classes, state.subjects, refreshCounter]);
 
@@ -59,10 +61,30 @@ export const MarkEntryView: React.FC = () => {
     return availableClasses[0]?.id || state.classes[0]?.id || '';
   });
 
-  // Available subjects for the selected class
+  // Keep selectedClassId synced when availableClasses updates
+  useEffect(() => {
+    if (availableClasses.length > 0) {
+      if (!availableClasses.some((c) => c.id === selectedClassId)) {
+        setSelectedClassId(availableClasses[0].id);
+      }
+    } else {
+      setSelectedClassId('');
+    }
+  }, [availableClasses, selectedClassId]);
+
+  // Available subjects for the selected class:
+  // Super Admin sees all subjects in class; Teacher ONLY sees their assigned subjects in this class
   const availableSubjects = useMemo(() => {
-    return state.subjects.filter((s) => s.classId === selectedClassId);
-  }, [state.subjects, selectedClassId, refreshCounter]);
+    if (role === 'super_admin') {
+      return state.subjects.filter((s) => s.classId === selectedClassId);
+    }
+    if (!teacherProfile) return [];
+    return state.subjects.filter(
+      (s) =>
+        s.classId === selectedClassId &&
+        (s.assignedTeacherId === teacherProfile.id || teacherProfile.assignedSubjectIds?.includes(s.id))
+    );
+  }, [role, teacherProfile, state.subjects, selectedClassId, refreshCounter]);
 
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('');
 
@@ -256,9 +278,46 @@ export const MarkEntryView: React.FC = () => {
     setStatusMessage(null);
   }, [selectedSubjectId, selectedClassId, state.marks, classStudents, evaluationLevels]);
 
-  // Cell change handler
-  const handleMarkChange = (studentId: string, levelId: string, value: string) => {
+  // Cell change handler with strict maximum mark bounds and numeric sanitation
+  const handleMarkChange = (studentId: string, levelId: string, rawInput: string, levelMax?: number) => {
     if (!canEditMarks) return;
+
+    let value = rawInput.trim();
+
+    if (value === '') {
+      setMarksMatrix((prev) => ({
+        ...prev,
+        [studentId]: {
+          ...(prev[studentId] || {}),
+          [levelId]: '',
+        },
+      }));
+      setHasUnsavedChanges(true);
+      setStatusMessage(null);
+      return;
+    }
+
+    // Allow only numeric digits and a single decimal point
+    value = value.replace(/[^0-9.]/g, '');
+    const parts = value.split('.');
+    if (parts.length > 2) {
+      value = parts[0] + '.' + parts.slice(1).join('');
+    }
+
+    const targetLevel = evaluationLevels.find((l) => l.id === levelId);
+    const maxMark = levelMax ?? (targetLevel ? (targetLevel.maxMark || targetLevel.maximumMark) : 100);
+
+    // If numerical value exceeds maxMark, strictly clamp to maxMark
+    if (value !== '' && value !== '.') {
+      const num = Number(value);
+      if (!isNaN(num)) {
+        if (num > maxMark) {
+          value = String(maxMark);
+        } else if (num < 0) {
+          value = '0';
+        }
+      }
+    }
 
     setMarksMatrix((prev) => ({
       ...prev,
@@ -486,8 +545,15 @@ export const MarkEntryView: React.FC = () => {
               'Mark',
             ];
             for (const k of possibleKeys) {
-              if (row[k] !== undefined) {
-                next[student.id][lvl.id] = String(row[k]);
+              if (row[k] !== undefined && row[k] !== '') {
+                const parsed = parseFloat(String(row[k]));
+                const max = lvl.maxMark || lvl.maximumMark || 100;
+                if (!isNaN(parsed)) {
+                  const clamped = Math.min(Math.max(0, parsed), max);
+                  next[student.id][lvl.id] = String(clamped);
+                } else {
+                  next[student.id][lvl.id] = String(row[k]);
+                }
                 updatedCount++;
                 break;
               }
@@ -635,11 +701,15 @@ export const MarkEntryView: React.FC = () => {
               onChange={(e) => setSelectedClassId(e.target.value)}
               className="px-3 py-1.5 font-semibold text-sm border border-slate-200 dark:border-slate-700 rounded-md bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
             >
-              {availableClasses.map((c) => (
-                <option key={c.id} value={c.id} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">
-                  {c.name} ({c.academicYear})
-                </option>
-              ))}
+              {availableClasses.length === 0 ? (
+                <option value="">No Classes Available</option>
+              ) : (
+                availableClasses.map((c) => (
+                  <option key={c.id} value={c.id} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">
+                    {c.name} ({c.academicYear})
+                  </option>
+                ))
+              )}
             </select>
           </div>
 
@@ -653,11 +723,15 @@ export const MarkEntryView: React.FC = () => {
               onChange={(e) => setSelectedSubjectId(e.target.value)}
               className="px-3 py-1.5 font-semibold text-sm border border-slate-200 dark:border-slate-700 rounded-md bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
             >
-              {availableSubjects.map((s) => (
-                <option key={s.id} value={s.id} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">
-                  {s.name} ({s.code})
-                </option>
-              ))}
+              {availableSubjects.length === 0 ? (
+                <option value="">No Assigned Subjects</option>
+              ) : (
+                availableSubjects.map((s) => (
+                  <option key={s.id} value={s.id} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">
+                    {s.name} ({s.code})
+                  </option>
+                ))
+              )}
             </select>
           </div>
         </div>
@@ -815,7 +889,20 @@ export const MarkEntryView: React.FC = () => {
           </div>
         </div>
 
-        {evaluationLevels.length === 0 ? (
+        {availableSubjects.length === 0 ? (
+          <div className="p-12 text-center text-slate-400 dark:text-slate-500">
+            <Lock className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+            <p className="font-semibold text-slate-700 dark:text-slate-200">
+              {role === 'teacher' ? 'No Assigned Subjects for this Class' : 'No Subjects Configured for this Class'}
+            </p>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 max-w-md mx-auto">
+              {role === 'teacher'
+                ? 'Teachers can only view and evaluate marks for subjects assigned to their profile. Please contact an administrator to assign subjects to you.'
+                : 'Please configure curriculum subjects for this class in Subject Management to begin mark evaluation.'}
+            </p>
+          </div>
+        ) : evaluationLevels.length === 0 ? (
+
           <div className="p-12 text-center text-slate-400 dark:text-slate-500">
             <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
             <p className="font-semibold text-slate-700 dark:text-slate-200">
@@ -932,6 +1019,7 @@ export const MarkEntryView: React.FC = () => {
                       {/* Dynamic Evaluation Level Cells */}
                       {evaluationLevels.map((lvl) => {
                         const rawVal = marksMatrix[std.id]?.[lvl.id] ?? '';
+                        const effectiveMax = lvl.maxMark || lvl.maximumMark || 100;
                         const validation = getCellValidation(lvl, rawVal);
 
                         return (
@@ -941,14 +1029,12 @@ export const MarkEntryView: React.FC = () => {
                           >
                             <div className="relative flex justify-center">
                               <input
-                                type="number"
-                                step="any"
-                                min={0}
-                                max={lvl.maxMark}
+                                type="text"
+                                inputMode="decimal"
                                 disabled={!canEditMarks}
                                 value={rawVal}
                                 onChange={(e) =>
-                                  handleMarkChange(std.id, lvl.id, e.target.value)
+                                  handleMarkChange(std.id, lvl.id, e.target.value, effectiveMax)
                                 }
                                 placeholder="—"
                                 className={`w-20 text-center font-mono text-xs font-semibold py-1.5 px-2 rounded-md border transition ${
@@ -960,7 +1046,7 @@ export const MarkEntryView: React.FC = () => {
                                 } focus:outline-hidden focus:ring-2 focus:ring-indigo-500 disabled:opacity-75 disabled:cursor-not-allowed`}
                                 title={
                                   validation.error ||
-                                  `Allowed: 0 to ${lvl.maxMark}`
+                                  `Allowed: 0 to ${effectiveMax}`
                                 }
                               />
                             </div>
@@ -1099,15 +1185,18 @@ export const MarkEntryView: React.FC = () => {
                 Maximum Mark *
               </label>
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 required
-                min={1}
-                max={1000}
-                value={levelFormMaxMark}
-                onChange={(e) => setLevelFormMaxMark(Number(e.target.value))}
+                value={levelFormMaxMark === 0 ? '' : levelFormMaxMark}
+                onChange={(e) => {
+                  const cleaned = e.target.value.replace(/[^0-9]/g, '');
+                  setLevelFormMaxMark(cleaned === '' ? 0 : Math.min(1000, Number(cleaned)));
+                }}
+                placeholder="e.g. 20, 25, 40, 50, 100"
                 className="w-full px-3 py-2 text-xs font-mono font-semibold border border-slate-200 dark:border-slate-700 rounded-md bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
               />
-              <span className="text-[11px] text-slate-400 mt-0.5 block">e.g. 20, 25, 50, 100</span>
+              <span className="text-[11px] text-slate-400 mt-0.5 block">e.g. 20, 25, 40, 50, 100</span>
             </div>
 
             <div>
@@ -1115,11 +1204,14 @@ export const MarkEntryView: React.FC = () => {
                 Display Order *
               </label>
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 required
-                min={1}
-                value={levelFormOrder}
-                onChange={(e) => setLevelFormOrder(Number(e.target.value))}
+                value={levelFormOrder === 0 ? '' : levelFormOrder}
+                onChange={(e) => {
+                  const cleaned = e.target.value.replace(/[^0-9]/g, '');
+                  setLevelFormOrder(cleaned === '' ? 0 : Number(cleaned));
+                }}
                 className="w-full px-3 py-2 text-xs font-mono font-semibold border border-slate-200 dark:border-slate-700 rounded-md bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
               />
             </div>

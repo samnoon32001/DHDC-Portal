@@ -2,6 +2,21 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* =========================================================================
+   🔢 NUMERIC INPUT CLEANUP
+   Remove default spinner up/down arrows from number inputs across all browsers
+   ========================================================================= */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* =========================================================================
    🖨️ INSTITUTIONAL PRINT ENGINE
    Ensures ONLY official document parts print cleanly.
    Hides all portal chrome: sidebars, navbars, buttons, mobile nav, modal overlays.

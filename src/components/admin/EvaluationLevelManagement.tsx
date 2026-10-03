@@ -15,6 +15,7 @@ import {
   HelpCircle,
   CheckSquare,
   Sparkles,
+  Lock,
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
@@ -36,7 +37,11 @@ export const EvaluationLevelManagement: React.FC<EvaluationLevelManagementProps>
   const isTeacher = role === 'teacher';
 
   const teacher = state.teachers.find(
-    (t) => t.username === currentUser?.username || t.email === currentUser?.email
+    (t) =>
+      t.id === currentUser?.id ||
+      t.id === (currentUser as any)?.teacherId ||
+      t.username === currentUser?.username ||
+      t.email === currentUser?.email
   );
   const teacherId = teacher?.id || '';
 
@@ -46,26 +51,31 @@ export const EvaluationLevelManagement: React.FC<EvaluationLevelManagementProps>
     );
   }, [state.subjects, teacherId, teacher?.assignedSubjectIds]);
 
-  // Selected subject: prioritize initialSubjectId, then teacher's assigned subjects, then first subject
+  // Teachers ONLY see their assigned subjects. Super Admins see all school subjects.
+  const accessibleSubjects = useMemo(() => {
+    if (role === 'super_admin') return state.subjects;
+    return teacherAssignedSubjects;
+  }, [role, state.subjects, teacherAssignedSubjects]);
+
+  // Selected subject: prioritize initialSubjectId, then first accessible subject
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>(() => {
-    if (initialSubjectId && state.subjects.some((s) => s.id === initialSubjectId)) {
+    if (initialSubjectId && accessibleSubjects.some((s) => s.id === initialSubjectId)) {
       return initialSubjectId;
     }
-    if (isTeacher && teacherAssignedSubjects.length > 0) {
-      return teacherAssignedSubjects[0].id;
-    }
-    return state.subjects[0]?.id || '';
+    return accessibleSubjects[0]?.id || '';
   });
 
   useEffect(() => {
-    if (initialSubjectId && state.subjects.some((s) => s.id === initialSubjectId)) {
+    if (initialSubjectId && accessibleSubjects.some((s) => s.id === initialSubjectId)) {
       setSelectedSubjectId(initialSubjectId);
-    } else if (isTeacher && teacherAssignedSubjects.length > 0) {
-      if (!state.subjects.some((s) => s.id === selectedSubjectId)) {
-        setSelectedSubjectId(teacherAssignedSubjects[0].id);
+    } else if (accessibleSubjects.length > 0) {
+      if (!accessibleSubjects.some((s) => s.id === selectedSubjectId)) {
+        setSelectedSubjectId(accessibleSubjects[0].id);
       }
+    } else {
+      setSelectedSubjectId('');
     }
-  }, [initialSubjectId, isTeacher, teacherAssignedSubjects, state.subjects, selectedSubjectId]);
+  }, [initialSubjectId, accessibleSubjects, selectedSubjectId]);
 
   // Modals state
   const [isAddEditModalOpen, setIsAddEditModalOpen] = useState(false);
@@ -84,6 +94,16 @@ export const EvaluationLevelManagement: React.FC<EvaluationLevelManagementProps>
     ? state.classes.find((c) => c.id === selectedSubject.classId)
     : null;
 
+  // Permission check: Super Admin or Teacher assigned to this specific subject
+  const canManageLevel = useMemo(() => {
+    if (role === 'super_admin') return true;
+    if (!isTeacher || !selectedSubject) return false;
+    return (
+      selectedSubject.assignedTeacherId === teacherId ||
+      teacher?.assignedSubjectIds?.includes(selectedSubject.id)
+    );
+  }, [role, isTeacher, selectedSubject, teacherId, teacher?.assignedSubjectIds]);
+
   // Levels for this subject sorted by displayOrder
   const subjectLevels = state.evaluationLevels
     .filter((l) => l.subjectId === selectedSubjectId)
@@ -93,6 +113,7 @@ export const EvaluationLevelManagement: React.FC<EvaluationLevelManagementProps>
   const totalMaxMarks = subjectLevels.reduce((acc, l) => acc + (l.maxMark || l.maximumMark || 0), 0);
 
   const openAddModal = () => {
+    if (!canManageLevel) return;
     setEditingLevel(null);
     setFormName('');
     setFormMaxMark(25);
@@ -103,6 +124,7 @@ export const EvaluationLevelManagement: React.FC<EvaluationLevelManagementProps>
   };
 
   const openEditModal = (level: EvaluationLevel) => {
+    if (!canManageLevel) return;
     setEditingLevel(level);
     setFormName(level.name);
     setFormMaxMark(level.maxMark || level.maximumMark || 25);
@@ -115,6 +137,11 @@ export const EvaluationLevelManagement: React.FC<EvaluationLevelManagementProps>
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
+
+    if (!canManageLevel) {
+      setFormError('You do not have permission to modify evaluation levels for this subject.');
+      return;
+    }
 
     const cleanName = formName.trim();
     if (!cleanName) {
@@ -175,7 +202,7 @@ export const EvaluationLevelManagement: React.FC<EvaluationLevelManagementProps>
   };
 
   const handleDeleteConfirm = () => {
-    if (!deletingLevel) return;
+    if (!deletingLevel || !canManageLevel) return;
     const actor = currentUser
       ? { id: currentUser.id, name: currentUser.name, role: currentUser.role }
       : undefined;
@@ -186,6 +213,7 @@ export const EvaluationLevelManagement: React.FC<EvaluationLevelManagementProps>
   };
 
   const handleMoveOrder = (level: EvaluationLevel, direction: 'up' | 'down') => {
+    if (!canManageLevel) return;
     const actor = currentUser
       ? { id: currentUser.id, name: currentUser.name, role: currentUser.role }
       : undefined;
@@ -226,7 +254,7 @@ export const EvaluationLevelManagement: React.FC<EvaluationLevelManagementProps>
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             {isTeacher
-              ? 'Configure, add, edit, and reorder evaluation levels (Unit Tests, Mid-Terms, Assignments, Projects) for your subjects'
+              ? 'Configure, add, edit, and reorder evaluation levels (Unit Tests, Mid-Terms, Assignments, Projects) for your assigned subjects'
               : 'Configure dynamic evaluation levels, maximum marks, and display order per subject'}
           </p>
         </div>
@@ -242,14 +270,16 @@ export const EvaluationLevelManagement: React.FC<EvaluationLevelManagementProps>
             </button>
           )}
 
-          <button
-            onClick={openAddModal}
-            disabled={!selectedSubjectId}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-md shadow-xs transition cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            Add Evaluation Level
-          </button>
+          {canManageLevel && (
+            <button
+              onClick={openAddModal}
+              disabled={!selectedSubjectId}
+              className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-md shadow-xs transition cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              Add Evaluation Level
+            </button>
+          )}
         </div>
       </div>
 
@@ -268,33 +298,10 @@ export const EvaluationLevelManagement: React.FC<EvaluationLevelManagementProps>
               onChange={(e) => setSelectedSubjectId(e.target.value)}
               className="mt-1 px-3 py-1.5 text-sm font-semibold border border-slate-200 dark:border-slate-700 rounded-md bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
             >
-              {isTeacher && teacherAssignedSubjects.length > 0 ? (
-                <>
-                  <optgroup label="My Assigned Subjects">
-                    {teacherAssignedSubjects.map((sub) => {
-                      const c = state.classes.find((cl) => cl.id === sub.classId);
-                      return (
-                        <option key={sub.id} value={sub.id} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">
-                          {sub.name} ({sub.code}) — {c?.name || 'Class'}
-                        </option>
-                      );
-                    })}
-                  </optgroup>
-                  <optgroup label="Other School Subjects">
-                    {state.subjects
-                      .filter((s) => !teacherAssignedSubjects.some((ts) => ts.id === s.id))
-                      .map((sub) => {
-                        const c = state.classes.find((cl) => cl.id === sub.classId);
-                        return (
-                          <option key={sub.id} value={sub.id} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">
-                            {sub.name} ({sub.code}) — {c?.name || 'Class'}
-                          </option>
-                        );
-                      })}
-                  </optgroup>
-                </>
+              {accessibleSubjects.length === 0 ? (
+                <option value="">No Assigned Subjects</option>
               ) : (
-                state.subjects.map((sub) => {
+                accessibleSubjects.map((sub) => {
                   const c = state.classes.find((cl) => cl.id === sub.classId);
                   return (
                     <option key={sub.id} value={sub.id} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">
@@ -345,137 +352,161 @@ export const EvaluationLevelManagement: React.FC<EvaluationLevelManagementProps>
 
       {/* Evaluation Levels Table matching Professional Polish Design */}
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">
-              Configured Levels ({subjectLevels.length})
-            </h2>
-            <span className="text-xs text-slate-400 font-normal">for {selectedSubject?.name}</span>
+        {accessibleSubjects.length === 0 ? (
+          <div className="p-12 text-center text-slate-400 dark:text-slate-500">
+            <Lock className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+            <p className="font-semibold text-slate-700 dark:text-slate-200">
+              No Assigned Subjects Available
+            </p>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 max-w-md mx-auto">
+              You only have access to view and configure evaluation levels for subjects assigned to your instructor profile. Please contact an institutional administrator to assign curriculum subjects.
+            </p>
           </div>
+        ) : (
+          <>
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                  Configured Levels ({subjectLevels.length})
+                </h2>
+                <span className="text-xs text-slate-400 font-normal">for {selectedSubject?.name}</span>
+              </div>
 
-          <button
-            onClick={openAddModal}
-            disabled={!selectedSubjectId}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-md transition cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" /> Add Level
-          </button>
-        </div>
+              {canManageLevel && (
+                <button
+                  onClick={openAddModal}
+                  disabled={!selectedSubjectId}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-md transition cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Level
+                </button>
+              )}
+            </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400 tracking-wider">
-                <th className="py-3 px-4 w-20 text-center">Order</th>
-                <th className="py-3 px-4">Evaluation Level Name</th>
-                <th className="py-3 px-4 text-center">Maximum Mark</th>
-                <th className="py-3 px-4 text-center">Marks Recorded</th>
-                <th className="py-3 px-4 text-center">Status</th>
-                <th className="py-3 px-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
-              {subjectLevels.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400">
-                    <Sliders className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                    <p className="font-semibold text-slate-700">No evaluation levels defined for this subject yet.</p>
-                    <p className="text-xs text-slate-400 mt-1">Click "+ Add Evaluation Level" to configure your first evaluation component.</p>
-                    <button
-                      onClick={openAddModal}
-                      className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-md transition shadow-xs"
-                    >
-                      <Plus className="w-3.5 h-3.5" /> Add First Level
-                    </button>
-                  </td>
-                </tr>
-              ) : (
-                subjectLevels.map((lvl, idx) => {
-                  const marksRecorded = state.marks.filter((m) => m.evaluationLevelId === lvl.id).length;
-                  const maxMarkVal = lvl.maxMark || lvl.maximumMark || 0;
-
-                  return (
-                    <tr
-                      key={lvl.id}
-                      className="hover:bg-slate-50/70 dark:hover:bg-slate-800/60 transition-colors"
-                    >
-                      <td className="py-3.5 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <span className="font-mono text-xs font-bold text-slate-600 dark:text-slate-400 w-5">
-                            #{lvl.displayOrder}
-                          </span>
-                          <div className="flex flex-col">
-                            <button
-                              disabled={idx === 0}
-                              onClick={() => handleMoveOrder(lvl, 'up')}
-                              className="p-0.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-20 cursor-pointer"
-                              title="Move Up"
-                            >
-                              <ArrowUp className="w-3 h-3" />
-                            </button>
-                            <button
-                              disabled={idx === subjectLevels.length - 1}
-                              onClick={() => handleMoveOrder(lvl, 'down')}
-                              className="p-0.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-20 cursor-pointer"
-                              title="Move Down"
-                            >
-                              <ArrowDown className="w-3 h-3" />
-                            </button>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <span className="font-semibold text-slate-900 dark:text-white">
-                          {lvl.name}
-                        </span>
-                        <div className="text-[11px] text-slate-400 dark:text-slate-500 font-mono">ID: {lvl.id}</div>
-                      </td>
-                      <td className="py-3.5 px-4 text-center">
-                        <span className="font-mono font-bold text-slate-900 dark:text-white px-2.5 py-1 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                          {maxMarkVal}
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-4 text-center">
-                        <span
-                          className={`text-xs font-mono font-medium px-2 py-0.5 rounded-full ${
-                            marksRecorded > 0
-                              ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800'
-                              : 'text-slate-400 dark:text-slate-500'
-                          }`}
-                        >
-                          {marksRecorded} entries
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-4 text-center">
-                        <Badge variant={lvl.status === 'active' ? 'success' : 'neutral'}>
-                          {lvl.status}
-                        </Badge>
-                      </td>
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400 tracking-wider">
+                    <th className="py-3 px-4 w-20 text-center">Order</th>
+                    <th className="py-3 px-4">Evaluation Level Name</th>
+                    <th className="py-3 px-4 text-center">Maximum Mark</th>
+                    <th className="py-3 px-4 text-center">Marks Recorded</th>
+                    <th className="py-3 px-4 text-center">Status</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
+                  {subjectLevels.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-12 text-center text-slate-400">
+                        <Sliders className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                        <p className="font-semibold text-slate-700">No evaluation levels defined for this subject yet.</p>
+                        <p className="text-xs text-slate-400 mt-1">Click "+ Add Evaluation Level" to configure your first evaluation component.</p>
+                        {canManageLevel && (
                           <button
-                            onClick={() => openEditModal(lvl)}
-                            className="p-1.5 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 rounded-md transition cursor-pointer"
-                            title="Edit Level"
+                            onClick={openAddModal}
+                            className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-md transition shadow-xs"
                           >
-                            <Edit2 className="w-4 h-4" />
+                            <Plus className="w-3.5 h-3.5" /> Add First Level
                           </button>
-                          <button
-                            onClick={() => setDeletingLevel(lvl)}
-                            className="p-1.5 text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-md transition cursor-pointer"
-                            title="Delete Level"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                        )}
                       </td>
                     </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                  ) : (
+                    subjectLevels.map((lvl, idx) => {
+                      const marksRecorded = state.marks.filter((m) => m.evaluationLevelId === lvl.id).length;
+                      const maxMarkVal = lvl.maxMark || lvl.maximumMark || 0;
+
+                      return (
+                        <tr
+                          key={lvl.id}
+                          className="hover:bg-slate-50/70 dark:hover:bg-slate-800/60 transition-colors"
+                        >
+                          <td className="py-3.5 px-4 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <span className="font-mono text-xs font-bold text-slate-600 dark:text-slate-400 w-5">
+                                #{lvl.displayOrder}
+                              </span>
+                              {canManageLevel && (
+                                <div className="flex flex-col">
+                                  <button
+                                    disabled={idx === 0}
+                                    onClick={() => handleMoveOrder(lvl, 'up')}
+                                    className="p-0.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-20 cursor-pointer"
+                                    title="Move Up"
+                                  >
+                                    <ArrowUp className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    disabled={idx === subjectLevels.length - 1}
+                                    onClick={() => handleMoveOrder(lvl, 'down')}
+                                    className="p-0.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-20 cursor-pointer"
+                                    title="Move Down"
+                                  >
+                                    <ArrowDown className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className="font-semibold text-slate-900 dark:text-white">
+                              {lvl.name}
+                            </span>
+                            <div className="text-[11px] text-slate-400 dark:text-slate-500 font-mono">ID: {lvl.id}</div>
+                          </td>
+                          <td className="py-3.5 px-4 text-center">
+                            <span className="font-mono font-bold text-slate-900 dark:text-white px-2.5 py-1 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                              {maxMarkVal}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-center">
+                            <span
+                              className={`text-xs font-mono font-medium px-2 py-0.5 rounded-full ${
+                                marksRecorded > 0
+                                  ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800'
+                                  : 'text-slate-400 dark:text-slate-500'
+                              }`}
+                            >
+                              {marksRecorded} entries
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-center">
+                            <Badge variant={lvl.status === 'active' ? 'success' : 'neutral'}>
+                              {lvl.status}
+                            </Badge>
+                          </td>
+                          <td className="py-3.5 px-4 text-right">
+                            {canManageLevel ? (
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  onClick={() => openEditModal(lvl)}
+                                  className="p-1.5 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 rounded-md transition cursor-pointer"
+                                  title="Edit Level"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => setDeletingLevel(lvl)}
+                                  className="p-1.5 text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-md transition cursor-pointer"
+                                  title="Delete Level"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-400 italic">Read-only</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Add / Edit Evaluation Level Modal */}
@@ -513,15 +544,18 @@ export const EvaluationLevelManagement: React.FC<EvaluationLevelManagementProps>
                 Maximum Mark *
               </label>
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 required
-                min={1}
-                max={1000}
-                value={formMaxMark}
-                onChange={(e) => setFormMaxMark(Number(e.target.value))}
+                value={formMaxMark === 0 ? '' : formMaxMark}
+                onChange={(e) => {
+                  const cleaned = e.target.value.replace(/[^0-9]/g, '');
+                  setFormMaxMark(cleaned === '' ? 0 : Math.min(1000, Number(cleaned)));
+                }}
+                placeholder="e.g. 20, 25, 40, 50, 100"
                 className="w-full px-3 py-2 text-sm font-mono border border-slate-200 dark:border-slate-700 rounded-md bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
               />
-              <span className="text-[11px] text-slate-400 mt-0.5 block">e.g. 20, 25, 50, 100</span>
+              <span className="text-[11px] text-slate-400 mt-0.5 block">e.g. 20, 25, 40, 50, 100</span>
             </div>
 
             <div>
@@ -529,11 +563,14 @@ export const EvaluationLevelManagement: React.FC<EvaluationLevelManagementProps>
                 Display Order *
               </label>
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 required
-                min={1}
-                value={formDisplayOrder}
-                onChange={(e) => setFormDisplayOrder(Number(e.target.value))}
+                value={formDisplayOrder === 0 ? '' : formDisplayOrder}
+                onChange={(e) => {
+                  const cleaned = e.target.value.replace(/[^0-9]/g, '');
+                  setFormDisplayOrder(cleaned === '' ? 0 : Number(cleaned));
+                }}
                 className="w-full px-3 py-2 text-sm font-mono border border-slate-200 dark:border-slate-700 rounded-md bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
               />
             </div>
